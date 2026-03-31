@@ -1,0 +1,249 @@
+{
+  "mirofish_simulations": {
+    "name": "MiroFish — Simulation List",
+    "description": "Complete list of all MiroFish trading simulations including live Databento sessions and synthetic backtests. Shows simulation ID, scenario name, data source, bar count, decision count, and P&L breakdown by institutional, retail, and market maker agents. Use this to find specific simulations for detailed analysis. Green/red coloring indicates profitable vs losing agent types.",
+    "category": "MiroFish",
+    "subCategory": "Simulations",
+    "type": "table",
+    "endpoint": "openbb/simulations",
+    "gridData": {"w": 20, "h": 8},
+    "source": "MiroFish Trading Simulation",
+    "data": {
+      "table": {
+        "showAll": true,
+        "columnsDefs": [
+          {"field": "sim_id", "headerName": "Simulation ID", "width": 180, "cellDataType": "text"},
+          {"field": "scenario", "headerName": "Scenario", "width": 250, "cellDataType": "text"},
+          {"field": "source", "headerName": "Source", "width": 100, "cellDataType": "text"},
+          {"field": "total_bars", "headerName": "Bars", "width": 70, "chartDataType": "series", "cellDataType": "number"},
+          {"field": "total_decisions", "headerName": "Decisions", "width": 90, "cellDataType": "number"},
+          {"field": "inst_pnl", "headerName": "Inst P&L", "width": 110, "cellDataType": "number", "renderFn": "greenRed"},
+          {"field": "retail_pnl", "headerName": "Retail P&L", "width": 110, "cellDataType": "number", "renderFn": "greenRed"},
+          {"field": "mm_pnl", "headerName": "MM P&L", "width": 110, "cellDataType": "number", "renderFn": "greenRed"},
+          {"field": "direction_correct", "headerName": "Correct?", "width": 80, "cellDataType": "text"}
+        ]
+      }
+    }
+  },
+
+  "mirofish_price_chart": {
+    "name": "MiroFish — ES Price Action",
+    "description": "Interactive Plotly candlestick chart showing ES futures price action from the simulation. Includes volume bars with green/red coloring based on bar direction. Use this to identify Al Brooks price action patterns: climax bars (3+ consecutive strong bars), TBTL corrections, trend extensions, and reversal setups. Hover over bars for OHLCV details.",
+    "category": "MiroFish",
+    "subCategory": "Charts",
+    "type": "chart",
+    "endpoint": "openbb/chart/price",
+    "gridData": {"w": 24, "h": 12},
+    "source": "MiroFish / Databento",
+    "params": [
+      {
+        "paramName": "sim_id",
+        "value": "",
+        "label": "Simulation",
+        "type": "text",
+        "description": "Select a simulation to analyze. Shows all completed and live sessions with scenario type and data source.",
+        "optionsEndpoint": "openbb/sim_options",
+        "show": true
+      },
+      {
+        "paramName": "theme",
+        "value": "dark",
+        "label": "Theme",
+        "type": "text",
+        "description": "Chart theme (dark or light)"
+      }
+    ]
+  },
+
+  "mirofish_agent_decisions": {
+    "name": "MiroFish — Agent Decisions",
+    "description": "Detailed agent trading decisions with trade classification, Al Brooks pattern detection, entry/exit prices, P&L breakdown, conviction levels, and strategy reasoning. Filter by agent type to compare institutional vs retail behavior. Each row represents a single agent action with full context.",
+    "category": "MiroFish",
+    "subCategory": "Agents",
+    "type": "table",
+    "endpoint": "openbb/decisions",
+    "gridData": {"w": 40, "h": 12},
+    "source": "MiroFish Trading Simulation",
+    "params": [
+      {
+        "paramName": "sim_id",
+        "value": "",
+        "label": "Simulation",
+        "type": "text",
+        "description": "Select a simulation to analyze. Shows all completed and live sessions with scenario type and data source.",
+        "optionsEndpoint": "openbb/sim_options",
+        "show": true
+      },
+      {
+        "paramName": "agent_type",
+        "value": "",
+        "label": "Agent Type",
+        "type": "text",
+        "description": "Filter by agent type",
+        "options": [
+          {"label": "All Agents", "value": ""},
+          {"label": "Institutional", "value": "INSTITUTIONAL"},
+          {"label": "Retail", "value": "RETAIL"},
+          {"label": "Market Maker", "value": "MARKET_MAKER"}
+        ],
+        "show": true
+      }
+    ],
+    "data": {
+      "table": {
+        "showAll": true,
+        "columnsDefs": [
+          {"field": "bar", "headerName": "Bar", "width": 55, "chartDataType": "series", "cellDataType": "number"},
+          {"field": "agent_id", "headerName": "Agent", "width": 95, "cellDataType": "text"},
+          {"field": "agent_type", "headerName": "Type", "width": 100, "cellDataType": "text"},
+          {"field": "trade_type", "headerName": "Trade", "width": 120, "cellDataType": "text"},
+          {"field": "action", "headerName": "Action", "width": 110, "cellDataType": "text"},
+          {"field": "qty", "headerName": "Qty", "width": 55, "cellDataType": "number"},
+          {"field": "entry_price", "headerName": "Price", "width": 85, "cellDataType": "number"},
+          {"field": "bar_close", "headerName": "Bar Close", "width": 85, "cellDataType": "number"},
+          {"field": "conviction", "headerName": "Conv%", "width": 65, "cellDataType": "number"},
+          {"field": "pattern", "headerName": "Brooks Pattern", "width": 150, "cellDataType": "text"},
+          {"field": "position", "headerName": "Position", "width": 90, "cellDataType": "text"},
+          {"field": "realized_pnl", "headerName": "Real P&L", "width": 90, "cellDataType": "number", "renderFn": "greenRed"},
+          {"field": "unrealized_pnl", "headerName": "Unreal P&L", "width": 90, "cellDataType": "number", "renderFn": "greenRed"},
+          {"field": "total_pnl", "headerName": "Total P&L", "width": 90, "cellDataType": "number", "renderFn": "greenRed"},
+          {"field": "reasoning", "headerName": "Reasoning", "width": 350, "cellDataType": "text"},
+          {"field": "latency_ms", "headerName": "Latency", "width": 70, "cellDataType": "number"}
+        ]
+      }
+    }
+  },
+
+  "mirofish_pnl_summary": {
+    "name": "MiroFish — P&L by Agent Type",
+    "description": "Bar chart comparing realized P&L across agent types: Institutional (blue, Al Brooks methodology with GPT-4o), Retail (amber, simplified PA with cognitive biases via GPT-4o-mini), Market Maker (purple, two-sided quoting). Shows which agent type profited and which lost, indicating whether the institutional smart-money thesis or retail momentum chasing was correct.",
+    "category": "MiroFish",
+    "subCategory": "Performance",
+    "type": "chart",
+    "endpoint": "openbb/chart/pnl",
+    "gridData": {"w": 16, "h": 8},
+    "source": "MiroFish Trading Simulation",
+    "params": [
+      {
+        "paramName": "sim_id",
+        "value": "",
+        "label": "Simulation",
+        "type": "text",
+        "description": "Select a simulation to analyze. Shows all completed and live sessions with scenario type and data source.",
+        "optionsEndpoint": "openbb/sim_options",
+        "show": true
+      },
+      {
+        "paramName": "theme",
+        "value": "dark",
+        "label": "Theme",
+        "type": "text",
+        "description": "Chart theme"
+      }
+    ]
+  },
+
+  "mirofish_market_state": {
+    "name": "MiroFish — Brooks State Machine",
+    "description": "Al Brooks price action state machine analysis as formatted markdown. Shows market cycle classification (strong bull/bear, weak, range), Always-In direction and confidence, active patterns (buy/sell climax, TBTL correction, wedge, breakout), price summary (OHLC, range, strong bar counts), and agent behavior comparison (institutional vs retail buy/sell activity with P&L). Includes natural language interpretation of whether institutional caution or retail momentum was validated.",
+    "category": "MiroFish",
+    "subCategory": "Analysis",
+    "type": "markdown",
+    "endpoint": "openbb/market_state",
+    "gridData": {"w": 16, "h": 6},
+    "source": "MiroFish / Al Brooks",
+    "params": [
+      {
+        "paramName": "sim_id",
+        "value": "",
+        "label": "Simulation",
+        "type": "text",
+        "description": "Select a simulation to analyze. Shows all completed and live sessions with scenario type and data source.",
+        "optionsEndpoint": "openbb/sim_options",
+        "show": true
+      }
+    ]
+  },
+
+  "mirofish_health": {
+    "name": "MiroFish — Service Health",
+    "description": "MiroFish backend service health status showing LLM configuration (OpenAI GPT-4o), Databento market data connection, and Zep knowledge graph memory status. Green checkmarks indicate active services. Use this to verify the backend is operational before running simulations.",
+    "category": "MiroFish",
+    "subCategory": "System",
+    "type": "metric",
+    "endpoint": "openbb/health",
+    "gridData": {"w": 8, "h": 4},
+    "source": "MiroFish"
+  },
+
+  "mirofish_agent_flow": {
+    "name": "MiroFish — Agent Order Flow",
+    "description": "Plotly stacked bar chart showing buy volume (upward) and sell volume (downward) by agent type per bar. Institutional (blue), Retail (amber), Market Maker (purple). Includes ES price overlay and annotations highlighting key divergence points where institutions and retail traders disagree. Divergence markers show when institutions are selling heavily while retail is buying — a classic Al Brooks climax reversal signal.",
+    "category": "MiroFish",
+    "subCategory": "Charts",
+    "type": "chart",
+    "endpoint": "openbb/chart/flow",
+    "gridData": {"w": 24, "h": 8},
+    "source": "MiroFish Trading Simulation",
+    "params": [
+      {
+        "paramName": "sim_id",
+        "value": "",
+        "label": "Simulation",
+        "type": "text",
+        "description": "Select a simulation to analyze. Shows all completed and live sessions with scenario type and data source.",
+        "optionsEndpoint": "openbb/sim_options",
+        "show": true
+      },
+      {
+        "paramName": "theme",
+        "value": "dark",
+        "label": "Theme",
+        "type": "text",
+        "description": "Chart theme"
+      }
+    ]
+  },
+
+  "mirofish_live_control": {
+    "name": "MiroFish — Live Simulation Control",
+    "description": "Start and manage live ES futures trading simulations. Connects to Databento real-time data and runs multi-agent Al Brooks price action simulation. Use the Run button to start a session with your chosen parameters.",
+    "category": "MiroFish",
+    "subCategory": "Live Trading",
+    "type": "markdown",
+    "endpoint": "openbb/live_control",
+    "runButton": true,
+    "gridData": {"w": 16, "h": 8},
+    "source": "MiroFish / Databento",
+    "params": [
+      {
+        "paramName": "seed_bars",
+        "value": "5",
+        "label": "Seed Bars",
+        "type": "text",
+        "description": "Number of bars to collect before agents start trading (3-15)",
+        "show": true
+      },
+      {
+        "paramName": "max_bars",
+        "value": "60",
+        "label": "Max Bars",
+        "type": "text",
+        "description": "Maximum number of bars to simulate (10-120)",
+        "show": true
+      },
+      {
+        "paramName": "action",
+        "value": "start",
+        "label": "Action",
+        "type": "text",
+        "description": "start or stop",
+        "options": [
+          {"label": "▶ Start Live Session", "value": "start"},
+          {"label": "■ Stop Session", "value": "stop"}
+        ],
+        "show": true
+      }
+    ]
+  }
+}

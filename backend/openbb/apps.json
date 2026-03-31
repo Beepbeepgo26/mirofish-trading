@@ -1,0 +1,32 @@
+[
+  {
+    "name": "MiroFish Trading Simulation",
+    "img": "",
+    "img_dark": "",
+    "img_light": "",
+    "description": "ES futures multi-agent simulation with Al Brooks price action — institutional vs retail dynamics",
+    "allowCustomization": true,
+    "tabs": {
+      "overview": {
+        "id": "overview",
+        "name": "Overview",
+        "layout": [
+          {"i": "mirofish_health", "x": 0, "y": 0, "w": 8, "h": 4},
+          {"i": "mirofish_simulations", "x": 8, "y": 0, "w": 32, "h": 8},
+          {"i": "mirofish_price_chart", "x": 0, "y": 8, "w": 24, "h": 12, "state": {"params": {"sim_id": ""}}},
+          {"i": "mirofish_pnl_summary", "x": 24, "y": 8, "w": 16, "h": 8, "state": {"params": {"sim_id": ""}}},
+          {"i": "mirofish_market_state", "x": 24, "y": 16, "w": 16, "h": 6, "state": {"params": {"sim_id": ""}}}
+        ]
+      },
+      "agents": {
+        "id": "agents",
+        "name": "Agent Analysis",
+        "layout": [
+          {"i": "mirofish_agent_flow", "x": 0, "y": 0, "w": 40, "h": 10, "state": {"params": {"sim_id": ""}}},
+          {"i": "mirofish_agent_decisions", "x": 0, "y": 10, "w": 40, "h": 12, "state": {"params": {"sim_id": ""}}}
+        ]
+      }
+    },
+    "groups": []
+  }
+]

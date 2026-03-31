@@ -1,0 +1,52 @@
+======================================================================
+  SIMULATION SUMMARY: Scenario A: Bull Trend + 3-Bar Buy Climax
+  ID: 20260308_203318
+======================================================================
+
+  Total bars: 27
+  Total decisions: 837
+
+  P&L BY AGENT TYPE:
+  Type                N     Realized   Unrealized    W    L
+  -------------------------------------------------------
+  INSTITUTIONAL       3 $    53,214 $         0    3    0
+  MARKET_MAKER        3 $      -507 $         0    2    1
+  NOISE              20 $         0 $         0    0    0
+  RETAIL              5 $    14,398 $         0    5    0
+
+  LLM Usage:
+    primary: 162 calls, 211539 tokens, 0 errors
+    boost: 135 calls, 172622 tokens, 0 errors
+
+  NOTABLE DECISIONS:
+  -------------------------------------------------------
+  Bar  0 | RETAIL_00 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=65% | STRONG_BULL | pos=LONGx1 | pnl=R$0/U$0 | latency=0ms | The price action shows a strong bull bar with a 90% body, indicating strong buyi
+  Bar  0 | MM_00 [MARKET_MAKER] | BUY_LIMIT qty=25 @5400.50 | conviction=60% | STRONG_BULL | pos=LONGx25 | pnl=R$0/U$0 | latency=0ms | The current market is displaying a strong bullish bar with a 90% body, indicatin
+  Bar  0 | RETAIL_02 [RETAIL] | BUY_MARKET qty=3 @0.00 | conviction=70% | STRONG_BULL | pos=LONGx3 | pnl=R$0/U$0 | latency=0ms | The market shows strong bullish momentum with a strong bull bar closing near the
+  Bar  0 | MM_02 [MARKET_MAKER] | BUY_LIMIT qty=30 @5400.50 | conviction=60% | STRONG_BULL | pos=LONGx30 | pnl=R$0/U$0 | latency=0ms | The market is showing strong bullish momentum with a 90% body on the last bar. I
+  Bar  1 | MM_02 [MARKET_MAKER] | SELL_LIMIT qty=20 @5403.00 | conviction=70% | STRONG_BULL | pos=LONGx10 | pnl=R$0/U$2503 | latency=0ms | The market is currently strong bullish with two consecutive bull bars, and our p
+  Bar  1 | RETAIL_04 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=80% | STRONG_BULL | pos=LONGx1 | pnl=R$0/U$0 | latency=0ms | I see 2 consecutive strong bull bars, which makes me feel the momentum is bullis
+  Bar  1 | RETAIL_03 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=70% | STRONG_BULL | pos=LONGx1 | pnl=R$0/U$0 | latency=0ms | There are two strong consecutive bull bars, which indicates momentum in the upwa
+  Bar  1 | INST_01 [INSTITUTIONAL] | BUY_LIMIT qty=50 @5400.50 | conviction=70% | STRONG_BULL | pos=LONGx50 | pnl=R$0/U$0 | latency=0ms | The market shows strong bullish momentum with two consecutive strong bull bars. 
+  Bar  1 | INST_02 [INSTITUTIONAL] | BUY_LIMIT qty=50 @5401.00 | conviction=70% | STRONG_BULL | pos=LONGx50 | pnl=R$0/U$0 | latency=0ms | The presence of two consecutive strong bull bars suggests a developing strong bu
+  Bar  1 | INST_00 [INSTITUTIONAL] | BUY_LIMIT qty=50 @5401.00 | conviction=70% | STRONG_BULL | pos=LONGx50 | pnl=R$0/U$0 | latency=0ms | The market is showing strong bullish momentum with two consecutive strong bull b
+  Bar  1 | MM_01 [MARKET_MAKER] | SELL_LIMIT qty=20 @5402.25 | conviction=60% | STRONG_BULL | pos=FLATx0 | pnl=R$1418/U$0 | latency=0ms | The recent price action shows strong bullish momentum with consecutive bull bars
+  Bar  1 | RETAIL_01 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=70% | STRONG_BULL | pos=LONGx1 | pnl=R$0/U$0 | latency=0ms | We have two consecutive strong bull bars, which indicates momentum is on the ris
+  Bar  1 | MM_00 [MARKET_MAKER] | SELL_LIMIT qty=25 @5402.50 | conviction=70% | STRONG_BULL | pos=FLATx0 | pnl=R$2086/U$0 | latency=0ms | The market is showing strong bullish momentum with consecutive bull bars. To sec
+  Bar  2 | MM_02 [MARKET_MAKER] | SELL_LIMIT qty=20 @5403.00 | conviction=70% | STRONG_BULL | pos=SHORTx10 | pnl=R$1149/U$0 | latency=0ms | The price is in a strong bullish trend with three consecutive bull bars and is c
+  Bar  2 | MM_00 [MARKET_MAKER] | BUY_LIMIT qty=20 @5402.50 | conviction=60% | STRONG_BULL | pos=LONGx20 | pnl=R$2086/U$0 | latency=0ms | The market is showing strong bullish momentum with consecutive bull bars and a t
+  Bar  2 | RETAIL_00 [RETAIL] | EXIT_LONG qty=1 @0.00 | conviction=60% | STRONG_BULL | pos=FLATx0 | pnl=R$127/U$0 | latency=0ms | The market is in a strong bullish trend, but I have identified a potential buy c
+  Bar  2 | RETAIL_04 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=90% | STRONG_BULL | pos=LONGx2 | pnl=R$0/U$102 | latency=0ms | There are 3 consecutive bull bars, and I feel the urge to chase momentum and get
+  Bar  2 | INST_02 [INSTITUTIONAL] | EXIT_LONG qty=50 @0.00 | conviction=80% | STRONG_BULL | pos=FLATx0 | pnl=R$4497/U$0 | latency=0ms | There is a potential buy climax with 3 consecutive strong bull bars, suggesting 
+  Bar  2 | INST_01 [INSTITUTIONAL] | EXIT_LONG qty=50 @0.00 | conviction=80% | STRONG_BULL | pos=FLATx0 | pnl=R$5747/U$0 | latency=0ms | We are observing a potential buy climax with three consecutive strong bull bars.
+  Bar  2 | RETAIL_03 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=80% | STRONG_BULL | pos=LONGx2 | pnl=R$0/U$102 | latency=0ms | There are 3 consecutive strong bull bars, which indicates strong momentum. I don
+  Bar  2 | RETAIL_01 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=80% | STRONG_BULL | pos=LONGx2 | pnl=R$0/U$90 | latency=0ms | There have been 3 consecutive strong bull bars, indicating momentum. I want to j
+  Bar  2 | INST_00 [INSTITUTIONAL] | EXIT_LONG qty=50 @0.00 | conviction=80% | STRONG_BULL | pos=FLATx0 | pnl=R$4497/U$0 | latency=0ms | The market has shown a potential buy climax with 3 consecutive strong bull bars,
+  Bar  2 | RETAIL_02 [RETAIL] | EXIT_LONG qty=3 @0.00 | conviction=60% | STRONG_BULL | pos=FLATx0 | pnl=R$382/U$0 | latency=0ms | Although the price action shows a strong bull trend, the presence of a buy clima
+  Bar  2 | MM_01 [MARKET_MAKER] | SELL_LIMIT qty=30 @5403.30 | conviction=80% | WEAK_BULL | pos=SHORTx30 | pnl=R$1418/U$0 | latency=0ms | The market is exhibiting a buy climax with three consecutive strong bull bars, i
+  Bar  3 | MM_02 [MARKET_MAKER] | SELL_LIMIT qty=20 @5404.00 | conviction=60% | WEAK_BULL | pos=SHORTx30 | pnl=R$1149/U$-324 | latency=0ms | Despite recent bull activity, the spread is wide and there's a buy climax, sugge
+  Bar  3 | INST_02 [INSTITUTIONAL] | SELL_LIMIT qty=50 @5404.10 | conviction=70% | WEAK_BULL | pos=SHORTx50 | pnl=R$4497/U$0 | latency=0ms | The market has shown a BUY_CLIMAX with 3 consecutive strong bull bars followed b
+  Bar  3 | MM_00 [MARKET_MAKER] | SELL_LIMIT qty=20 @5404.00 | conviction=70% | WEAK_BULL | pos=FLATx0 | pnl=R$3233/U$0 | latency=0ms | The market has shown strong bullish momentum with three consecutive strong bull 
+  Bar  3 | INST_00 [INSTITUTIONAL] | SELL_LIMIT qty=100 @5404.00 | conviction=70% | WEAK_BULL | pos=SHORTx100 | pnl=R$4497/U$0 | latency=0ms | The recent price action indicates a potential buy climax with three consecutive 
+  Bar  3 | INST_01 [INSTITUTIONAL] | SELL_LIMIT qty=100 @5404.50 | conviction=70% | STRONG_BULL | pos=SHORTx100 | pnl=R$5747/U$0 | latency=0ms | The market is showing signs of a buy climax with 3 consecutive strong bull bars 
+  Bar  3 | RETAIL_04 [RETAIL] | BUY_MARKET qty=1 @0.00 | conviction=80% | STRONG_BULL | pos=LONGx3 | pnl=R$0/U$277 | latency=0ms | There are 3 consecutive bull bars, which makes me anxious to enter and take adva
