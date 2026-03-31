@@ -64,17 +64,6 @@ curl -s -X POST "${SERVICE_URL}/api/simulations" \
   | python3 -m json.tool
 ```
 
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| `PERMISSION_DENIED` on secrets | Re-run deploy script — it grants access to the compute SA |
-| Timeout on simulation | Increase `--timeout` in deploy script (default 300s) |
-| Cold start slow | Set `MIN_INSTANCES=1` to keep one instance warm (costs ~$10/mo) |
-| OOM errors | Increase `MEMORY` to `2Gi` in deploy script |
-
-## Logs
-
 ```bash
 gcloud run services logs read mirofish-trading --region us-west2 --limit 50
 ```
