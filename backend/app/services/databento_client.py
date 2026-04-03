@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from app.services.bar_builder import resample_bars
+
 logger = logging.getLogger(__name__)
 
 # Databento import with graceful fallback
@@ -85,7 +87,8 @@ class DatabentoClient:
 
     def pull_bars(self, date: str, start_time: str = "09:30",
                   end_time: str = "11:00", timezone: str = "US/Eastern",
-                  max_bars: Optional[int] = None) -> list[dict]:
+                  max_bars: Optional[int] = None,
+                  bar_interval: int = 5) -> list[dict]:
         """
         Pull 1-minute ES bars for a specific date and time window.
 
@@ -138,6 +141,11 @@ class DatabentoClient:
                     "timestamp_utc": idx.isoformat() if hasattr(idx, 'isoformat') else str(idx),
                 }
                 bars.append(bar)
+
+            # Resample 1-minute bars to the requested interval
+            if bar_interval > 1:
+                bars = resample_bars(bars, interval=bar_interval)
+                logger.info(f"  Resampled to {bar_interval}m: {len(bars)} bars")
 
             if max_bars and len(bars) > max_bars:
                 bars = bars[:max_bars]
@@ -212,7 +220,8 @@ class DatabentoClient:
                 "metadata": {...}         # Session info
             }
         """
-        all_bars = self.pull_bars(date, start_time, end_time, timezone, max_bars=total_bars)
+        all_bars = self.pull_bars(date, start_time, end_time, timezone,
+                                  max_bars=total_bars, bar_interval=5)
 
         if len(all_bars) < seed_bars:
             raise ValueError(f"Only got {len(all_bars)} bars, need at least {seed_bars} for seeding.")

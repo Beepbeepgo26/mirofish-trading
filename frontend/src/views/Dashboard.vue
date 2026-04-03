@@ -204,12 +204,12 @@
           >
             <div class="hist-top">
               <span class="hist-id">{{ sim.sim_id }}</span>
-              <span class="badge" :class="sim.source === 'databento' ? 'badge-orange' : 'badge-blue'">
-                {{ sim.source || 'synthetic' }}
+              <span class="badge" :class="badgeClass(sim)">
+                {{ badgeLabel(sim) }}
               </span>
             </div>
             <div class="hist-bottom">
-              <span>{{ sim.scenario || 'Unknown' }}</span>
+              <span class="hist-date">{{ formatDate(sim) }}</span>
               <span v-if="sim.validation?.direction_correct !== undefined">
                 <span :class="['badge', sim.validation.direction_correct ? 'badge-green' : 'badge-red']">
                   {{ sim.validation.direction_correct ? '✓ correct' : '✗ wrong' }}
@@ -282,6 +282,46 @@ function agentColor(type) {
 function formatNum(n) {
   if (n === undefined || n === null) return '0'
   return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+function formatDate(sim) {
+  // Try created_at first
+  if (sim.created_at) {
+    try {
+      const d = new Date(sim.created_at)
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric',
+          hour: 'numeric', minute: '2-digit',
+        })
+      }
+    } catch { /* fall through */ }
+  }
+  // Fallback: parse date from sim_id (format: YYYYMMDD_HHMMSS or live_YYYYMMDD_HHMMSS)
+  const match = sim.sim_id?.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/)
+  if (match) {
+    const [, y, mo, d, h, mi] = match
+    const dt = new Date(`${y}-${mo}-${d}T${h}:${mi}:00`)
+    if (!isNaN(dt.getTime())) {
+      return dt.toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      })
+    }
+  }
+  return sim.sim_id || 'Unknown'
+}
+
+function badgeClass(sim) {
+  if (sim.source === 'databento') return 'badge-orange'
+  if (sim.source === 'live' || sim.sim_id?.startsWith('live_')) return 'badge-green'
+  return 'badge-blue'
+}
+
+function badgeLabel(sim) {
+  if (sim.source === 'databento') return 'databento'
+  if (sim.source === 'live' || sim.sim_id?.startsWith('live_')) return 'live'
+  return sim.source || 'synthetic'
 }
 
 async function launchSimulation() {
@@ -572,6 +612,9 @@ async function stopLiveSession() {
 .hist-bottom {
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 4px; font-size: 12px; color: var(--text-muted);
+}
+.hist-date {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);
 }
 
 .loading, .empty {

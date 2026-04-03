@@ -34,21 +34,21 @@ class LLMConfig:
 @dataclass
 class SimConfig:
     max_rounds: int = 30
-    agents_institutional: int = 7
-    agents_retail: int = 40
-    agents_market_maker: int = 3
-    agents_noise: int = 20
-    concurrency: int = 10
+    agents_institutional: int = 3
+    agents_retail: int = 5
+    agents_market_maker: int = 1
+    agents_noise: int = 5
+    concurrency: int = 5
 
     @classmethod
     def from_env(cls) -> "SimConfig":
         return cls(
             max_rounds=int(os.getenv("SIM_MAX_ROUNDS", "30")),
-            agents_institutional=int(os.getenv("SIM_AGENTS_INSTITUTIONAL", "7")),
-            agents_retail=int(os.getenv("SIM_AGENTS_RETAIL", "40")),
-            agents_market_maker=int(os.getenv("SIM_AGENTS_MARKET_MAKER", "3")),
-            agents_noise=int(os.getenv("SIM_AGENTS_NOISE", "20")),
-            concurrency=int(os.getenv("SIM_CONCURRENCY", "10")),
+            agents_institutional=int(os.getenv("SIM_AGENTS_INSTITUTIONAL", "3")),
+            agents_retail=int(os.getenv("SIM_AGENTS_RETAIL", "5")),
+            agents_market_maker=int(os.getenv("SIM_AGENTS_MARKET_MAKER", "1")),
+            agents_noise=int(os.getenv("SIM_AGENTS_NOISE", "5")),
+            concurrency=int(os.getenv("SIM_CONCURRENCY", "5")),
         )
 
 

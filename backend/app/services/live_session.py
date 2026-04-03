@@ -1,7 +1,8 @@
 """
 Live Streaming Session — Real-time ES futures simulation.
 Connects to Databento Live, receives 1-min OHLCV bars,
-runs agent decisions on each bar, and pushes results via callback.
+aggregates them into 5-minute bars via BarBuilder,
+runs agent decisions on each 5m bar, and pushes results via callback.
 """
 import asyncio
 import json
@@ -27,6 +28,9 @@ from app.agents.profiles import (
 )
 from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision
 from app.services.llm_client import LLMClient
+from app.services.bar_builder import BarBuilder
+from app.services.session_context import classify_session, SessionInfo
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +51,8 @@ class LiveSessionConfig:
     schema: str = "ohlcv-1m"
     symbol: str = "ES.c.0"
     stype: str = "continuous"
-    seed_bars: int = 5           # Wait for N bars before agents start trading
-    max_bars: int = 120          # Auto-stop after N bars (2 hours at 1-min)
+    seed_bars: int = 3           # Wait for 3 five-minute bars (15 min) before trading
+    max_bars: int = 78           # Full RTH session = 78 five-minute bars (6.5 hours)
     agent_institutional: int = 3
     agent_retail: int = 5
     agent_market_maker: int = 1
@@ -61,10 +65,11 @@ class LiveSession:
 
     Lifecycle:
       1. start() → connects to Databento Live, creates agents
-      2. Databento pushes OHLCV bars via callback
-      3. Each bar triggers: state machine update → agent decisions → order book
-      4. Results pushed to frontend via on_update callback
-      5. stop() → disconnects, compiles final results
+      2. Databento pushes 1-min OHLCV bars via callback
+      3. BarBuilder aggregates 1m bars into 5m bars
+      4. Each 5m bar triggers: state machine update → agent decisions → order book
+      5. Results pushed to frontend via on_update callback
+      6. stop() → disconnects, compiles final results
     """
 
     def __init__(self, config: AppConfig, session_config: LiveSessionConfig,
@@ -109,6 +114,10 @@ class LiveSession:
         # For GLBX.MDP3 ohlcv-1m, prices are in 1e-9 scale
         self.PX_SCALE = 1e-9
 
+        # 5-minute bar builder — accumulates 1m bars from Databento
+        self.bar_builder = BarBuilder(interval=5)
+        self._current_session_info: SessionInfo = None
+
     def start(self):
         """Start the live session — connects to Databento and initializes agents."""
         logger.info(f"[{self.session_id}] Starting live session...")
@@ -147,6 +156,7 @@ class LiveSession:
                 "symbol": self.session_config.symbol,
                 "seed_bars": self.session_config.seed_bars,
                 "max_bars": self.session_config.max_bars,
+                "bar_interval": "5m",
                 "agents": {
                     "institutional": self.session_config.agent_institutional,
                     "retail": self.session_config.agent_retail,
@@ -190,6 +200,7 @@ class LiveSession:
             "error": self.error,
             "current_price": self.book.last_price,
             "market_state": self.state_machine.get_state_summary() if self.bars else None,
+            "session_info": self._current_session_info.session_name if self._current_session_info else None,
             "llm_stats": {
                 "primary": self.llm_primary.stats(),
                 "boost": self.llm_boost.stats(),
@@ -250,73 +261,93 @@ class LiveSession:
             self._emit("error", {"message": str(e)})
 
     def _on_ohlcv_bar(self, msg: db.OHLCVMsg):
-        """Handle an incoming OHLCV bar from Databento Live."""
-        self.bar_count += 1
-
+        """Handle an incoming 1-minute OHLCV bar from Databento Live."""
         # Convert Databento fixed-point prices to float
-        # Extract real timestamp: ts_event is nanoseconds since epoch
         ts_seconds = int(msg.ts_event / 1e9) if hasattr(msg, 'ts_event') and msg.ts_event else 0
 
-        bar = Bar(
-            timestamp=self.bar_count - 1,
+        bar_1m = Bar(
+            timestamp=self.bar_builder.bars_in_bucket,  # Position within current 5m bucket
             open=msg.open * self.PX_SCALE,
             high=msg.high * self.PX_SCALE,
             low=msg.low * self.PX_SCALE,
             close=msg.close * self.PX_SCALE,
             volume=msg.volume,
-            num_trades=0,  # Not available in OHLCV schema
+            num_trades=0,
             ts_event=ts_seconds,
         )
 
-        self.bars.append(bar)
-        self.book.last_price = bar.close
+        logger.debug(f"[{self.session_id}] 1m bar: O={bar_1m.open:.2f} "
+                      f"H={bar_1m.high:.2f} L={bar_1m.low:.2f} C={bar_1m.close:.2f}")
 
-        logger.info(f"[{self.session_id}] Bar {bar.timestamp}: "
-                    f"O={bar.open:.2f} H={bar.high:.2f} L={bar.low:.2f} "
-                    f"C={bar.close:.2f} V={bar.volume}")
+        # Feed to bar builder — only triggers on complete 5m bars
+        completed_5m = self.bar_builder.add_bar(bar_1m)
+
+        if completed_5m is None:
+            # Incomplete 5m bar — just emit a tick update for the frontend
+            self._emit("tick", {
+                "price": bar_1m.close,
+                "bucket_progress": f"{self.bar_builder.bars_in_bucket}/5",
+            })
+            return
+
+        # Complete 5-minute bar — process it
+        self.bar_count = self.bar_builder.completed_bar_count
+        self.bars.append(completed_5m)
+        self.book.last_price = completed_5m.close
+
+        # Get session context from real timestamp
+        if ts_seconds > 0:
+            dt = datetime.fromtimestamp(ts_seconds, tz=ZoneInfo("UTC"))
+            self._current_session_info = classify_session(dt, bar_interval_minutes=5)
+
+        logger.info(f"[{self.session_id}] 5m Bar {completed_5m.timestamp}: "
+                    f"O={completed_5m.open:.2f} H={completed_5m.high:.2f} "
+                    f"L={completed_5m.low:.2f} C={completed_5m.close:.2f} "
+                    f"V={completed_5m.volume} "
+                    f"[{self._current_session_info.session_name if self._current_session_info else '?'}]")
 
         # Update state machine
-        market_state = self.state_machine.process_bar(bar)
+        market_state = self.state_machine.process_bar(completed_5m)
 
-        # Emit bar to frontend
-        self._emit("bar", bar.to_dict())
+        # Emit 5m bar to frontend
+        bar_data = completed_5m.to_dict()
+        if self._current_session_info:
+            bar_data["session"] = self._current_session_info.session_name
+            bar_data["time_et"] = self._current_session_info.time_et
+        self._emit("bar", bar_data)
 
-        # Seeding phase: collect bars but don't trade yet
+        # Seeding phase
         if self.bar_count <= self.session_config.seed_bars:
             self.state = SessionState.WAITING_FOR_DATA
             self._emit("seeding", {
                 "bars_received": self.bar_count,
                 "bars_needed": self.session_config.seed_bars,
                 "market_state": self.state_machine.get_state_summary(),
+                "session": self._current_session_info.session_name if self._current_session_info else "UNKNOWN",
             })
-
-            # Re-seed order book around the actual price on first bar
             if self.bar_count == 1:
-                self._seed_initial_book(bar.close)
-
+                self._seed_initial_book(completed_5m.close)
             return
 
-        # Trading phase: run agents
+        # Trading phase
         self.state = SessionState.RUNNING
+        self._replenish_liquidity(completed_5m.close, completed_5m.timestamp)
 
-        # Replenish MM liquidity
-        self._replenish_liquidity(bar.close, bar.timestamp)
-
-        # Schedule agent decisions on the async loop
+        # Schedule agent decisions with session context
         if self._agent_loop and self._agent_loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
-                self._run_agent_round(market_state, bar.close, bar.timestamp),
+                self._run_agent_round(market_state, completed_5m.close,
+                                       completed_5m.timestamp),
                 self._agent_loop,
             )
             try:
-                # Wait up to 30 seconds for agents to decide
                 future.result(timeout=30)
             except Exception as e:
                 logger.error(f"[{self.session_id}] Agent round error: {e}")
 
-        # Auto-stop if max bars reached
+        # Auto-stop (78 5m bars = full RTH session)
         if self.bar_count >= self.session_config.max_bars:
-            logger.info(f"[{self.session_id}] Max bars ({self.session_config.max_bars}) reached. Auto-stopping.")
+            logger.info(f"[{self.session_id}] Max bars ({self.session_config.max_bars}) reached.")
             self.stop()
 
     # ─── Private: Agent Execution ───
@@ -338,7 +369,8 @@ class LiveSession:
             batch = self.agents[i:i + batch_size]
             tasks = [
                 agent.decide(market_state, current_price,
-                             self.book, self.bars, timestamp)
+                             self.book, self.bars, timestamp,
+                             session_info=self._current_session_info)
                 for agent in batch
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -432,6 +464,7 @@ class LiveSession:
             "session_id": self.session_id,
             "source": "live",
             "state": self.state.value,
+            "bar_interval": "5m",
             "bars": [b.to_dict() for b in self.bars],
             "total_bars": len(self.bars),
             "total_decisions": len(self.all_decisions),

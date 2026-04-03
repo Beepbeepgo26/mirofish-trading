@@ -13,6 +13,9 @@ from app.models.order_book import OrderBook, Side, Bar, snap_to_tick
 from app.models.market_state import MarketState, BrooksStateMachine, MarketCycle
 from app.agents.profiles import TraderProfile
 from app.services.llm_client import LLMClient
+from app.services.session_context import SessionInfo, CooldownManager, classify_session
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,11 @@ class AgentDecision:
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
     llm_latency_ms: float = 0.0
+    fill_price: float = 0.0      # Actual price the order was filled at
+    exit_price: float = 0.0      # Price when position was closed (for EXIT actions)
+    entry_price: float = 0.0     # Average entry price of the position at time of decision
+    session_name: str = ""       # Current session (MORNING, LUNCH_LULL, etc.)
+    cooldown_blocked: bool = False  # Whether the trade was blocked by cooldown
 
     def to_dict(self) -> dict:
         return {k: v for k, v in self.__dict__.items()}
@@ -80,6 +88,7 @@ class LLMTradingAgent:
         self.decisions: list[AgentDecision] = []
         self._system_prompt = profile.to_system_prompt()
         self._recent_bars_context: list[str] = []
+        self.cooldown = CooldownManager()
 
     @property
     def agent_id(self):
@@ -90,7 +99,8 @@ class LLMTradingAgent:
         return self.profile.agent_type
 
     def _build_user_prompt(self, state: MarketState, current_price: float,
-                           book: OrderBook, bars: list[Bar]) -> str:
+                           book: OrderBook, bars: list[Bar],
+                           session_info: SessionInfo = None) -> str:
         """Build the user prompt with full market context."""
         # Recent bars (last 10)
         recent_bars = bars[-10:] if len(bars) > 10 else bars
@@ -108,11 +118,34 @@ class LLMTradingAgent:
         # Order book
         book_str = book.get_book_summary()
 
+        # Session context
+        session_str = ""
+        if session_info:
+            session_str = f"""
+SESSION CONTEXT:
+- Current Time: {session_info.time_et}
+- Session: {session_info.session_name}
+- Minutes Since RTH Open: {session_info.minutes_since_rth_open}
+- Bars Since RTH Open (5m): {session_info.bars_since_rth_open}
+- Trade Aggressiveness: {session_info.trade_aggressiveness}
+- Volatility Regime: {session_info.volatility_regime}
+
+AL BROOKS TIME-OF-DAY GUIDANCE:
+{session_info.brooks_guidance}
+"""
+
+        # Cooldown status
+        cooldown_str = ""
+        if self.cooldown.consecutive_losses > 0:
+            cooldown_str = f"\nCOOLDOWN STATUS: {self.cooldown.consecutive_losses} consecutive losses. "
+            if self.cooldown.paused:
+                cooldown_str += "TRADING PAUSED — do not enter new positions."
+
         return f"""CURRENT MARKET STATE (Bar {len(bars)-1}):
 Price: {current_price:.2f}
 Order Book: {book_str}
-
-RECENT PRICE ACTION:
+{session_str}
+RECENT PRICE ACTION (5-MINUTE BARS):
 {bars_str}
 
 AL BROOKS STATE MACHINE ASSESSMENT:
@@ -130,16 +163,19 @@ AL BROOKS STATE MACHINE ASSESSMENT:
 
 YOUR CURRENT POSITION:
 {pos_str}
+Entry Price: {self.position.avg_entry:.2f}
 Realized P&L (session): ${self.realized_pnl:,.0f}
-
+{cooldown_str}
 DECISION REQUIRED:
-Given the price action, your methodology, and your personality — what is your next action?
+Given the price action, session context, your methodology, and your personality — what is your next action?
 Respond with JSON only."""
 
     async def decide(self, state: MarketState, current_price: float,
-                     book: OrderBook, bars: list[Bar], timestamp: int) -> AgentDecision:
+                     book: OrderBook, bars: list[Bar], timestamp: int,
+                     session_info: SessionInfo = None) -> AgentDecision:
         """Get LLM decision and execute it."""
-        user_prompt = self._build_user_prompt(state, current_price, book, bars)
+        user_prompt = self._build_user_prompt(state, current_price, book, bars,
+                                              session_info=session_info)
 
         # Query Zep knowledge graph for relevant context
         memory_context = ""
@@ -184,6 +220,23 @@ Respond with JSON only."""
             action = "HOLD"
             qty = 0
 
+        # Session gating: if session says SKIP, force HOLD
+        if session_info and session_info.trade_aggressiveness == "SKIP":
+            if action not in ("HOLD", "EXIT_LONG", "EXIT_SHORT"):
+                action = "HOLD"
+                qty = 0
+                reasoning += " [SESSION: Trading not recommended during this period]"
+
+        # Cooldown gating: check if we can open a new position
+        if action not in ("HOLD", "EXIT_LONG", "EXIT_SHORT"):
+            can_trade, block_reason = self.cooldown.can_open_new_trade(
+                timestamp, conviction * 100
+            )
+            if not can_trade:
+                action = "HOLD"
+                qty = 0
+                reasoning += f" [COOLDOWN: {block_reason}]"
+
         # Guard: Block counter-trend entries during trend extension
         if state.trend_extending and not state.confirmed_reversal:
             is_counter_trend = False
@@ -202,7 +255,7 @@ Respond with JSON only."""
                 reasoning += ' [BLOCKED: trend extending without reversal confirmation]'
                 state.fade_attempts += 1
 
-        self._execute(action, qty, price, book, current_price, timestamp)
+        fill_price, exit_price = self._execute(action, qty, price, book, current_price, timestamp)
 
         decision = AgentDecision(
             timestamp=timestamp,
@@ -219,39 +272,50 @@ Respond with JSON only."""
             position_size=self.position.size,
             realized_pnl=self.realized_pnl,
             unrealized_pnl=self.position.unrealized_pnl,
+            fill_price=fill_price,
+            exit_price=exit_price,
+            entry_price=self.position.avg_entry,
+            session_name=session_info.session_name if session_info else "",
+            cooldown_blocked=(action == "HOLD" and "[COOLDOWN:" in reasoning),
         )
         self.decisions.append(decision)
         return decision
 
     def _execute(self, action: str, qty: int, price: float,
-                 book: OrderBook, current_price: float, timestamp: int):
-        """Execute the trading action against the order book."""
+                 book: OrderBook, current_price: float, timestamp: int) -> tuple[float, float]:
+        """
+        Execute the trading action against the order book.
+        Returns (fill_price, exit_price) — 0.0 if not applicable.
+        """
+        fill_price = 0.0
+        exit_price = 0.0
+
         if qty <= 0 and action not in ('HOLD', 'EXIT_LONG', 'EXIT_SHORT'):
-            return
+            return fill_price, exit_price
 
         if action == 'BUY_LIMIT':
             limit_price = snap_to_tick(min(price, current_price))
             order = book.submit_limit_order(
                 self.agent_id, Side.BUY, limit_price, qty, timestamp)
-            # Only count filled quantity as position
             if order.filled_qty > 0:
+                fill_price = limit_price
                 self._add_to_position('LONG', order.filled_qty, limit_price)
-            # Unfilled portion stays on the book (may fill later)
 
         elif action == 'SELL_LIMIT':
             limit_price = snap_to_tick(max(price, current_price))
             order = book.submit_limit_order(
                 self.agent_id, Side.SELL, limit_price, qty, timestamp)
             if order.filled_qty > 0:
+                fill_price = limit_price
                 self._add_to_position('SHORT', order.filled_qty, limit_price)
 
         elif action == 'BUY_MARKET':
             trades = book.submit_market_order(
                 self.agent_id, Side.BUY, qty, timestamp)
             if trades:
-                # Use volume-weighted average fill price
                 total_qty = sum(t.qty for t in trades)
                 vwap = sum(t.price * t.qty for t in trades) / total_qty
+                fill_price = round(vwap, 2)
                 self._add_to_position('LONG', total_qty, vwap)
 
         elif action == 'SELL_MARKET':
@@ -260,6 +324,7 @@ Respond with JSON only."""
             if trades:
                 total_qty = sum(t.qty for t in trades)
                 vwap = sum(t.price * t.qty for t in trades) / total_qty
+                fill_price = round(vwap, 2)
                 self._add_to_position('SHORT', total_qty, vwap)
 
         elif action == 'EXIT_LONG' and self.position.side == 'LONG':
@@ -267,16 +332,28 @@ Respond with JSON only."""
             trades = book.submit_market_order(
                 self.agent_id, Side.SELL, exit_qty, timestamp)
             if trades:
+                total_qty = sum(t.qty for t in trades)
+                vwap = sum(t.price * t.qty for t in trades) / total_qty
+                exit_price = round(vwap, 2)
+                was_winner = self.position.unrealized_pnl > 0
                 self.realized_pnl += self.position.unrealized_pnl
                 self.position = Position()
+                self.cooldown.record_exit(timestamp, was_winner)
 
         elif action == 'EXIT_SHORT' and self.position.side == 'SHORT':
             exit_qty = self.position.size
             trades = book.submit_market_order(
                 self.agent_id, Side.BUY, exit_qty, timestamp)
             if trades:
+                total_qty = sum(t.qty for t in trades)
+                vwap = sum(t.price * t.qty for t in trades) / total_qty
+                exit_price = round(vwap, 2)
+                was_winner = self.position.unrealized_pnl > 0
                 self.realized_pnl += self.position.unrealized_pnl
                 self.position = Position()
+                self.cooldown.record_exit(timestamp, was_winner)
+
+        return fill_price, exit_price
 
     def _add_to_position(self, side: str, qty: int, price: float):
         if self.position.side == side or self.position.side == "FLAT":
@@ -317,7 +394,8 @@ class NoiseAgent:
         )
 
     async def decide(self, state: MarketState, current_price: float,
-                     book: OrderBook, bars: list[Bar], timestamp: int) -> AgentDecision:
+                     book: OrderBook, bars: list[Bar], timestamp: int,
+                     session_info: SessionInfo = None) -> AgentDecision:
         action = "HOLD"
         qty = 0
         price = 0.0

@@ -99,14 +99,16 @@ ORDER FLOW PRINCIPLES:
 - Stop runs (price briefly breaks support/resistance) provide institutional entry liquidity
 """
 
-INSTITUTIONAL_BEHAVIOR = """- ALWAYS use limit orders for entries (minimize market impact)
-- Scale into positions over 3-5 bars using TWAP-like execution
-- Take partial profits at measured move targets
-- Widen stops to give trades room — your capital can absorb drawdowns
-- FADE retail stop clusters: when price breaks obvious support/resistance briefly, BUY/SELL the reversal
-- After detecting a climax, WAIT for confirmation before fading (don't front-run)
+INSTITUTIONAL_BEHAVIOR = """- Enter full position on confirmed setups. ONE entry, ONE exit. No scaling.
+- Use LIMIT orders for entries when possible (minimize market impact)
+- Set stops beyond the signal bar's extreme — give the trade room to work
+- Profit targets based on measured move or 2x risk
+- FADE retail stop clusters: when price breaks obvious support/resistance briefly, trade the reversal
+- After detecting a climax, WAIT for a strong reversal bar before fading (don't front-run)
 - In trading ranges, place limit orders at extremes — do NOT chase breakouts
-- Monitor order flow: if your fills are aggressive (market orders hitting you), the other side is desperate"""
+- Close ALL positions by 3:50 PM ET — no overnight holds on intraday trades
+- RESPECT the session context: trade aggressively during MORNING and CLOSING_HOUR, skip LUNCH_LULL
+- If the session says SKIP or trade_aggressiveness is LOW, your action should be HOLD"""
 
 
 def create_institutional_profiles(count: int) -> list[TraderProfile]:
@@ -130,7 +132,7 @@ def create_institutional_profiles(count: int) -> list[TraderProfile]:
             agent_type="INSTITUTIONAL",
             name=name,
             capital=50_000_000,
-            max_position=200,
+            max_position=20,
             methodology=AL_BROOKS_FULL_METHODOLOGY,
             risk_level=risk,
             behavioral_rules=INSTITUTIONAL_BEHAVIOR,
@@ -202,7 +204,7 @@ def create_retail_profiles(count: int) -> list[TraderProfile]:
             agent_type="RETAIL",
             name=names[i % len(names)] + f"_{i:02d}",
             capital=random.choice([10_000, 25_000, 50_000]),
-            max_position=random.choice([1, 2, 3, 5]),
+            max_position=random.choice([1, 2, 3]),
             methodology=RETAIL_METHODOLOGY_NOVICE if is_novice else RETAIL_METHODOLOGY_INTERMEDIATE,
             risk_level=random.choice(["aggressive", "very_aggressive"]),
             behavioral_rules=RETAIL_BEHAVIOR_NOVICE if is_novice else RETAIL_BEHAVIOR_INTERMEDIATE,

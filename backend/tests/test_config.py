@@ -12,11 +12,11 @@ class TestSimConfig:
         with patch.dict(os.environ, {}, clear=True):
             config = SimConfig.from_env()
         assert config.max_rounds == 30
-        assert config.agents_institutional == 7
-        assert config.agents_retail == 40
-        assert config.agents_market_maker == 3
-        assert config.agents_noise == 20
-        assert config.concurrency == 10
+        assert config.agents_institutional == 3
+        assert config.agents_retail == 5
+        assert config.agents_market_maker == 1
+        assert config.agents_noise == 5
+        assert config.concurrency == 5
 
     def test_env_override(self):
         env = {"SIM_AGENTS_INSTITUTIONAL": "3", "SIM_AGENTS_RETAIL": "10"}

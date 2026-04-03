@@ -28,6 +28,8 @@ from app.agents.profiles import (
 from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision, Position
 from app.services.llm_client import LLMClient
 from app.services.zep_memory import ZepMemoryService
+from app.services.session_context import classify_session
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +183,14 @@ class SimulationManager:
             # Get market state from last bar
             market_state = self.state_machine.state
 
+            # Build session context from bar timestamp if available
+            session_info = None
+            if self.bars and self.bars[-1].ts_event > 0:
+                dt = datetime.fromtimestamp(self.bars[-1].ts_event, tz=ZoneInfo("UTC"))
+                session_info = classify_session(dt, bar_interval_minutes=5)
+
             # Agent decisions drive all order flow
-            await self._run_agent_round(market_state, prev_close, t)
+            await self._run_agent_round(market_state, prev_close, t, session_info=session_info)
 
             # Build bar from actual trades
             bar = self.book.build_bar(t, prev_close)
@@ -211,7 +219,8 @@ class SimulationManager:
         return results
 
     async def _run_agent_round(self, market_state: MarketState,
-                                current_price: float, timestamp: int):
+                                current_price: float, timestamp: int,
+                                session_info=None):
         """Run all agents concurrently with rate limiting."""
         random.shuffle(self.agents)
 
@@ -223,7 +232,8 @@ class SimulationManager:
             for agent in batch:
                 tasks.append(
                     agent.decide(market_state, current_price,
-                                 self.book, self.bars, timestamp)
+                                 self.book, self.bars, timestamp,
+                                 session_info=session_info)
                 )
             decisions = await asyncio.gather(*tasks, return_exceptions=True)
 
