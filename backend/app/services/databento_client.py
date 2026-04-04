@@ -189,7 +189,10 @@ class DatabentoClient:
 
         # Calculate end time based on bars needed
         # 30 bars from 9:30 = 10:00 AM, 60 bars = 10:30 AM, etc.
-        minutes_needed = bars_back
+        # Multiply by bar interval because pull_bars resamples 1m → 5m
+        # To get 30 five-minute bars, we need 150 one-minute bars (150 minutes of data)
+        bar_interval = 5
+        minutes_needed = bars_back * bar_interval
         end_hour = 9 + (30 + minutes_needed) // 60
         end_minute = (30 + minutes_needed) % 60
         end_time = f"{end_hour:02d}:{end_minute:02d}"

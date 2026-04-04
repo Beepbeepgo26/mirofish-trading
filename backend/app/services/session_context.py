@@ -196,6 +196,10 @@ class CooldownManager:
     """
     Prevents rapid position flipping after exits.
     Separates closing decisions (always allowed) from opening decisions (gated).
+
+    NOTE: conviction_pct uses 0-100 scale. The LLM returns conviction as 0.0-1.0,
+    so callers must multiply by 100 before passing to can_open_new_trade().
+    See llm_agent.py: self.cooldown.can_open_new_trade(timestamp, conviction * 100)
     """
     min_bars_between_trades: int = 3      # Minimum 3 bars (15 min on 5m chart) between exit and next entry
     base_conviction_threshold: float = 60.0  # Minimum conviction to enter (0-100 scale)

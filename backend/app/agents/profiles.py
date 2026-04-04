@@ -243,7 +243,7 @@ def create_mm_profiles(count: int) -> list[TraderProfile]:
             agent_type="MARKET_MAKER",
             name=f"Citadel_Securities_Desk_{i}",
             capital=100_000_000,
-            max_position=500,
+            max_position=50,
             methodology=MM_METHODOLOGY,
             risk_level="neutral",
             behavioral_rules=MM_BEHAVIOR,

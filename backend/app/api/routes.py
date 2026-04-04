@@ -103,13 +103,14 @@ def databento_bars():
     end_time = data.get("end_time", "11:00")
     timezone = data.get("timezone", "US/Eastern")
     max_bars = data.get("max_bars", 60)
+    bar_interval = data.get("bar_interval", 5)
 
     if not date:
         return jsonify({"error": "date is required (YYYY-MM-DD)"}), 400
 
     try:
         dbn = _get_databento()
-        bars = dbn.pull_bars(date, start_time, end_time, timezone, max_bars=max_bars)
+        bars = dbn.pull_bars(date, start_time, end_time, timezone, max_bars=max_bars, bar_interval=bar_interval)
         return jsonify({
             "bars": bars,
             "count": len(bars),
@@ -244,12 +245,14 @@ def _build_databento_scenario(data: dict) -> dict:
     return {
         "name": f"Databento ES: {date} {start_time}-{end_time} {timezone}",
         "description": (
-            f"Real ES futures 1-minute bars from {date}. "
-            f"Agents see first {seed_bar_count} bars, then predict the next {free_run}. "
+            f"Real ES futures 5-minute bars from {date}. "
+            f"Agents see first {len(session_data['seed_bars'])} bars (5m), "
+            f"then predict the next {free_run}. "
             f"Actual outcome available for comparison."
         ),
         "seed_bars": session_data["seed_bars"],
         "seed_bar_count": len(session_data["seed_bars"]),
+        "bar_interval": "5m",
         "free_run_bars": free_run,
         "validation_bars": session_data["validation_bars"],
         "expected_outcomes": {
