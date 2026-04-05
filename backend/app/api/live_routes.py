@@ -1,7 +1,6 @@
 """
 Live Streaming API — REST endpoints + WebSocket for real-time simulation.
 """
-import json
 import logging
 import threading
 from flask import Blueprint, jsonify, request

@@ -2,10 +2,9 @@
 Unit tests for the Al Brooks price action state machine.
 Tests: cycle classification, climax detection, TBTL, trend extension, reversal.
 """
-import pytest
 from app.models.order_book import Bar
 from app.models.market_state import (
-    BrooksStateMachine, MarketState, MarketCycle, PatternType, AlwaysInState
+    BrooksStateMachine, MarketCycle, PatternType
 )
 
 

@@ -2,8 +2,7 @@
 Unit tests for the continuous double-auction order book.
 Tests: limit orders, market orders, matching, bar building, tick snapping.
 """
-import pytest
-from app.models.order_book import OrderBook, Side, Bar, Order, Trade, snap_to_tick
+from app.models.order_book import OrderBook, Side, Bar, snap_to_tick
 
 
 class TestSnapToTick:

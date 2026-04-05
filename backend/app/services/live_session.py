@@ -5,12 +5,10 @@ aggregates them into 5-minute bars via BarBuilder,
 runs agent decisions on each 5m bar, and pushes results via callback.
 """
 import asyncio
-import json
 import logging
 import random
 import threading
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Callable
@@ -24,7 +22,6 @@ from app.models.market_state import BrooksStateMachine, MarketState
 from app.agents.profiles import (
     create_institutional_profiles, create_retail_profiles,
     create_mm_profiles, create_noise_profiles,
-    AL_BROOKS_FULL_METHODOLOGY,
 )
 from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision
 from app.services.llm_client import LLMClient

@@ -152,7 +152,6 @@ class StorageService:
 
         else:
             # Local fallback
-            sim_dir = os.path.join(self.local_fallback, "")
             if os.path.exists(self.local_fallback):
                 for entry in sorted(os.listdir(self.local_fallback), reverse=True)[:limit]:
                     meta_path = os.path.join(self.local_fallback, entry, "metadata.json")

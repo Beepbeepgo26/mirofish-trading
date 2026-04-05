@@ -3,19 +3,15 @@ LLM Trading Agent — The core agent class.
 Wraps Al Brooks state machine context + agent personality into an LLM prompt,
 gets structured JSON decision, and executes against the order book.
 """
-import asyncio
 import random
 import logging
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from app.models.order_book import OrderBook, Side, Bar, snap_to_tick
-from app.models.market_state import MarketState, BrooksStateMachine, MarketCycle
+from app.models.market_state import MarketState, MarketCycle
 from app.agents.profiles import TraderProfile
 from app.services.llm_client import LLMClient
-from app.services.session_context import SessionInfo, CooldownManager, classify_session
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from app.services.session_context import SessionInfo, CooldownManager
 
 logger = logging.getLogger(__name__)
 

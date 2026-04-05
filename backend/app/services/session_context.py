@@ -5,7 +5,7 @@ All times are in US/Central (CT) — CME's native timezone.
 """
 import logging
 from datetime import datetime, time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)

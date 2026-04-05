@@ -2,9 +2,8 @@
 Unit tests for LLM client JSON parsing and fallback behavior.
 Tests the parsing logic without making actual API calls.
 """
-import pytest
 import json
-from app.services.llm_client import LLMClient, LLMResponse, LLMConfig
+from app.services.llm_client import LLMResponse
 
 
 class TestJSONParsing:

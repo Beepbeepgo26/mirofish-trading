@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import random
-import time
 from datetime import datetime
 from typing import Optional
 
@@ -25,7 +24,7 @@ from app.agents.profiles import (
     create_mm_profiles, create_noise_profiles,
     AL_BROOKS_FULL_METHODOLOGY,
 )
-from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision, Position
+from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision
 from app.services.llm_client import LLMClient
 from app.services.zep_memory import ZepMemoryService
 from app.services.session_context import classify_session
@@ -121,7 +120,6 @@ class SimulationManager:
 
         seed_bars = self.scenario["seed_bars"]
         free_run_count = self.scenario["free_run_bars"]
-        total_bars = len(seed_bars) + free_run_count
 
         # Initialize order book with first price
         first_price = seed_bars[0]["open"]
@@ -164,7 +162,7 @@ class SimulationManager:
             )
 
         # ─── Phase 2: Free-run bars (agents drive price) ───
-        logger.info(f"\n  ─── FREE RUN: Agents now drive price discovery ───\n")
+        logger.info("\n  ─── FREE RUN: Agents now drive price discovery ───\n")
         prev_close = self.bars[-1].close if self.bars else first_price
         catalysts = []
 
@@ -211,7 +209,7 @@ class SimulationManager:
         await self._save_outputs(results)
 
         # Log LLM stats
-        logger.info(f"\n  LLM Stats:")
+        logger.info("\n  LLM Stats:")
         logger.info(f"    Primary: {self.llm_primary.stats()}")
         logger.info(f"    Boost:   {self.llm_boost.stats()}")
 
@@ -370,7 +368,7 @@ class SimulationManager:
             f.write(f"  Total bars: {results['total_bars']}\n")
             f.write(f"  Total decisions: {results['total_decisions']}\n\n")
 
-            f.write(f"  P&L BY AGENT TYPE:\n")
+            f.write("  P&L BY AGENT TYPE:\n")
             f.write(f"  {'Type':<15} {'N':>5} {'Realized':>12} {'Unrealized':>12} {'W':>4} {'L':>4}\n")
             f.write(f"  {'-'*55}\n")
             for atype, stats in sorted(results["pnl_by_type"].items()):
@@ -379,14 +377,14 @@ class SimulationManager:
                         f"${stats['total_unrealized']:>10,.0f} "
                         f"{stats['winners']:>4} {stats['losers']:>4}\n")
 
-            f.write(f"\n  LLM Usage:\n")
+            f.write("\n  LLM Usage:\n")
             for tier, stats in results["llm_stats"].items():
                 f.write(f"    {tier}: {stats['total_calls']} calls, "
                         f"{stats['total_tokens']} tokens, "
                         f"{stats['errors']} errors\n")
 
             # Notable decisions
-            f.write(f"\n  NOTABLE DECISIONS:\n")
+            f.write("\n  NOTABLE DECISIONS:\n")
             f.write(f"  {'-'*55}\n")
             notable = [d for d in self.all_decisions
                        if d.action not in ("HOLD", "N/A") and d.conviction > 0.5]

@@ -3,7 +3,6 @@ OpenBB Workspace Integration — API endpoints for widgets.
 Returns data in the flat JSON format that OpenBB widgets expect.
 Serves widgets.json and apps.json configuration files.
 """
-import json
 import logging
 import os
 from collections import defaultdict

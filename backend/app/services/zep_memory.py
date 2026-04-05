@@ -4,7 +4,6 @@ Seeds the Al Brooks methodology as a knowledge graph.
 Records agent trades and market events as temporal facts.
 """
 import logging
-import asyncio
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 # Zep import with graceful fallback
 try:
     from zep_cloud.client import AsyncZep
-    from zep_cloud import Message
+    from zep_cloud import Message  # noqa: F401 — used by callers
     ZEP_AVAILABLE = True
 except ImportError:
     ZEP_AVAILABLE = False
@@ -23,7 +22,7 @@ except ImportError:
 class ZepMemoryService:
     """
     Manages Zep Cloud knowledge graph for trading simulation.
-    
+
     Graph structure:
     - Entities: Market concepts (climax, trend, range, measured_move)
     - Entities: Agent identities with their trading style

@@ -5,7 +5,6 @@ Each profile becomes the system prompt personality for an LLM agent.
 """
 import random
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass

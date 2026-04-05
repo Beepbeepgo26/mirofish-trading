@@ -147,8 +147,6 @@ class BrooksStateMachine:
             self.state.cycle = MarketCycle.WEAK_BEAR
         else:
             # Check for trading range: overlapping bars, mixed direction
-            ranges = [b.range_size for b in recent]
-            bodies = [b.body_size for b in recent]
             avg_body_pct = sum(b.body_pct for b in recent) / 5
             if avg_body_pct < 0.4 or (bull_count >= 2 and bear_count >= 2):
                 self.state.cycle = MarketCycle.TRADING_RANGE

@@ -4,13 +4,12 @@ Produce the initial price bars that establish the market context
 before agents begin driving price through order flow.
 """
 import random
-from typing import Optional
 
 
 def generate_scenario_a(seed: int = 42) -> dict:
     """
     Scenario A: Strong bull trend → 3-bar buy climax → TBTL test zone.
-    
+
     Phase 1 (bars 0-4): Gradual institutional accumulation
     Phase 2 (bars 5-7): Parabolic acceleration — BUY CLIMAX
     Phase 3 (bars 8-14): Indecision — seed bars thin out, agents take over
@@ -24,8 +23,8 @@ def generate_scenario_a(seed: int = 42) -> dict:
         move = random.uniform(0.5, 2.0)
         o, c = price, price + move
         h = c + random.uniform(0.0, 0.75)
-        l = o - random.uniform(0.0, 0.5)
-        bars.append({"open": o, "high": h, "low": l, "close": c,
+        low = o - random.uniform(0.0, 0.5)
+        bars.append({"open": o, "high": h, "low": low, "close": c,
                       "volume": random.randint(800, 1500)})
         price = c
 
@@ -35,8 +34,8 @@ def generate_scenario_a(seed: int = 42) -> dict:
         move = random.uniform(2.0, 3.5) * expansion / 1.5
         o, c = price, price + move
         h = c + random.uniform(0.0, 0.5)
-        l = o - random.uniform(0.0, 0.25)
-        bars.append({"open": o, "high": h, "low": l, "close": c,
+        low = o - random.uniform(0.0, 0.25)
+        bars.append({"open": o, "high": h, "low": low, "close": c,
                       "volume": random.randint(2000, 4000)})
         price = c
 
@@ -45,8 +44,8 @@ def generate_scenario_a(seed: int = 42) -> dict:
         move = random.uniform(-0.3, 0.3)  # Minimal seed influence
         o, c = price, price + move
         h = max(o, c) + random.uniform(0.1, 0.5)
-        l = min(o, c) - random.uniform(0.1, 0.5)
-        bars.append({"open": o, "high": h, "low": l, "close": c,
+        low = min(o, c) - random.uniform(0.1, 0.5)
+        bars.append({"open": o, "high": h, "low": low, "close": c,
                       "volume": random.randint(200, 500)})
         price = c
 
@@ -72,7 +71,7 @@ def generate_scenario_a(seed: int = 42) -> dict:
 def generate_scenario_b(seed: int = 123) -> dict:
     """
     Scenario B: Overnight bear trend → gap-up RTH open → 50/50 resolution.
-    
+
     Phase 1 (bars 0-4): Overnight (Globex) bear trend
     Phase 2 (bar 5): GAP UP open against overnight direction
     Phase 3 (bars 6-11): Opening range — institutional directional tests
@@ -87,8 +86,8 @@ def generate_scenario_b(seed: int = 123) -> dict:
         move = random.uniform(-1.5, -0.5)
         o, c = price, price + move
         h = o + random.uniform(0.0, 0.5)
-        l = c - random.uniform(0.0, 0.75)
-        bars.append({"open": o, "high": h, "low": l, "close": c,
+        low = c - random.uniform(0.0, 0.75)
+        bars.append({"open": o, "high": h, "low": low, "close": c,
                       "volume": random.randint(300, 600)})
         price = c
 
@@ -100,8 +99,8 @@ def generate_scenario_b(seed: int = 123) -> dict:
     o = price
     c = price + random.uniform(-0.5, 1.5)
     h = max(o, c) + random.uniform(0.5, 1.5)
-    l = min(o, c) - random.uniform(0.5, 1.5)
-    bars.append({"open": o, "high": h, "low": l, "close": c,
+    low = min(o, c) - random.uniform(0.5, 1.5)
+    bars.append({"open": o, "high": h, "low": low, "close": c,
                   "volume": random.randint(2000, 4000)})
     price = c
 
@@ -111,8 +110,8 @@ def generate_scenario_b(seed: int = 123) -> dict:
         move = direction * random.uniform(0.5, 1.5)
         o, c = price, price + move
         h = max(o, c) + random.uniform(0.0, 0.75)
-        l = min(o, c) - random.uniform(0.0, 0.75)
-        bars.append({"open": o, "high": h, "low": l, "close": c,
+        low = min(o, c) - random.uniform(0.0, 0.75)
+        bars.append({"open": o, "high": h, "low": low, "close": c,
                       "volume": random.randint(800, 2000)})
         price = c
 
