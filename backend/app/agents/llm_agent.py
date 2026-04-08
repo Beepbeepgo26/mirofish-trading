@@ -375,7 +375,11 @@ Respond with JSON only."""
 
 
 class NoiseAgent:
-    """Rule-based noise agent — no LLM needed, saves tokens."""
+    """Rule-based noise agent — no LLM needed, saves tokens.
+
+    Position tracking mirrors LLMTradingAgent so that P&L summaries
+    and decision logs accurately reflect noise agent activity.
+    """
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -399,21 +403,63 @@ class NoiseAgent:
         if random.random() < 0.15:
             side = random.choice([Side.BUY, Side.SELL])
             qty = random.randint(1, 2)
+            pos_side = "LONG" if side == Side.BUY else "SHORT"
             if random.random() < 0.6:
-                book.submit_market_order(self.agent_id, side, qty, timestamp)
+                trades = book.submit_market_order(self.agent_id, side, qty, timestamp)
                 action = f"{side.value}_MARKET"
+                if trades:
+                    total_qty = sum(t.qty for t in trades)
+                    vwap = sum(t.price * t.qty for t in trades) / total_qty
+                    self._add_to_position(pos_side, total_qty, vwap)
             else:
                 offset = random.uniform(-1.0, 1.0)
                 price = snap_to_tick(current_price + offset)
-                book.submit_limit_order(self.agent_id, side, price, qty, timestamp)
+                order = book.submit_limit_order(self.agent_id, side, price, qty, timestamp)
                 action = f"{side.value}_LIMIT"
+                if order.filled_qty > 0:
+                    self._add_to_position(pos_side, order.filled_qty, price)
+
+        # Update unrealized P&L for accurate decision log
+        if self.position.side != "FLAT" and self.position.size > 0:
+            if self.position.side == "LONG":
+                self.position.unrealized_pnl = (
+                    (current_price - self.position.avg_entry) * self.position.size * 50
+                )
+            else:
+                self.position.unrealized_pnl = (
+                    (self.position.avg_entry - current_price) * self.position.size * 50
+                )
 
         decision = AgentDecision(
             timestamp=timestamp, agent_id=self.agent_id, agent_type="NOISE",
             current_price=current_price, action=action, qty=qty, price=price,
             reasoning="Random noise.", conviction=0.0, market_read="N/A",
             position_side=self.position.side, position_size=self.position.size,
-            realized_pnl=self.realized_pnl, unrealized_pnl=0.0,
+            realized_pnl=self.realized_pnl, unrealized_pnl=self.position.unrealized_pnl,
         )
         self.decisions.append(decision)
         return decision
+
+    def _add_to_position(self, side: str, qty: int, price: float) -> None:
+        """Update internal position tracking after a fill."""
+        if self.position.side == side or self.position.side == "FLAT":
+            if self.position.size == 0:
+                self.position.avg_entry = price
+            else:
+                total_cost = self.position.avg_entry * self.position.size + price * qty
+                self.position.avg_entry = total_cost / (self.position.size + qty)
+            self.position.side = side
+            self.position.size += qty
+        else:
+            # Reducing opposite position
+            if qty >= self.position.size:
+                self.realized_pnl += self.position.unrealized_pnl
+                remaining = qty - self.position.size
+                self.position = Position()
+                if remaining > 0:
+                    self.position.side = side
+                    self.position.size = remaining
+                    self.position.avg_entry = price
+            else:
+                self.position.size -= qty
+

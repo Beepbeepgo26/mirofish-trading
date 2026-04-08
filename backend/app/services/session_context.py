@@ -1,7 +1,7 @@
 """
 Session Context — Time-of-day awareness for ES futures agents.
 Provides session classification, Al Brooks time guidance, and cooldown management.
-All times are in US/Central (CT) — CME's native timezone.
+All times are in America/Chicago (CT) — CME's native timezone.
 """
 import logging
 from datetime import datetime, time
@@ -10,8 +10,8 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-CT = ZoneInfo("US/Central")
-ET = ZoneInfo("US/Eastern")
+CT = ZoneInfo("America/Chicago")
+ET = ZoneInfo("America/New_York")
 
 
 @dataclass

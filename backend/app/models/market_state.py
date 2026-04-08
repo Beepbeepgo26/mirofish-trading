@@ -267,8 +267,8 @@ class BrooksStateMachine:
             ai.direction = "FLAT"
             ai.confidence = 0.3
 
-        # Reduce confidence if TBTL expected
-        if self.state.tbtl_expected:
+        # Reduce confidence if TBTL expected (only after cycle is classified)
+        if self.state.tbtl_expected and self.state.cycle != MarketCycle.UNKNOWN:
             ai.confidence *= 0.7
 
         ai.bars_in_state += 1
