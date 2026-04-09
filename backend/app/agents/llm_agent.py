@@ -83,7 +83,6 @@ class LLMTradingAgent:
         self.realized_pnl = 0.0
         self.decisions: list[AgentDecision] = []
         self._system_prompt = profile.to_system_prompt()
-        self._recent_bars_context: list[str] = []
         self.cooldown = CooldownManager()
 
     @property
@@ -463,3 +462,132 @@ class NoiseAgent:
             else:
                 self.position.size -= qty
 
+
+class MarketMakerAgent:
+    """
+    Rule-based market maker — no LLM needed.
+    Posts two-sided quotes (bid + ask) every bar.
+    Earns the spread, manages inventory risk via quote skewing.
+    """
+
+    def __init__(self, agent_id: str, max_position: int = 50):
+        self.agent_id = agent_id
+        self.agent_type = "MARKET_MAKER"
+        self.position = Position()
+        self.realized_pnl = 0.0
+        self.decisions: list[AgentDecision] = []
+        self.max_position = max_position
+        self.profile = TraderProfile(
+            agent_id=agent_id, agent_type="MARKET_MAKER",
+            name=f"MM_{agent_id}", capital=100_000_000,
+            max_position=max_position, methodology="Two-sided quoting",
+            risk_level="neutral", behavioral_rules="Spread capture",
+        )
+
+    async def decide(self, state: MarketState, current_price: float,
+                     book: OrderBook, bars: list[Bar], timestamp: int,
+                     session_info: SessionInfo = None) -> AgentDecision:
+        """Post two-sided quotes around fair value."""
+
+        # Determine spread based on volatility
+        base_spread = 0.25  # 1 tick in normal conditions
+
+        # Widen during climaxes or high volatility
+        if state.active_patterns:
+            from app.models.market_state import PatternType
+            climax_patterns = {PatternType.BUY_CLIMAX, PatternType.SELL_CLIMAX}
+            if climax_patterns.intersection(state.active_patterns):
+                base_spread = 1.00  # 4 ticks during climax
+            else:
+                base_spread = 0.50  # 2 ticks during other patterns
+
+        # Widen if session says volatility is high
+        if session_info and session_info.volatility_regime in ("VERY_HIGH", "HIGH"):
+            base_spread = max(base_spread, 0.75)
+
+        # Skip quoting during SKIP sessions (pre-market, lunch)
+        if session_info and session_info.trade_aggressiveness == "SKIP":
+            return AgentDecision(
+                timestamp=timestamp, agent_id=self.agent_id,
+                agent_type="MARKET_MAKER", current_price=current_price,
+                action="HOLD", reasoning="Session skip — no quoting.",
+                session_name=session_info.session_name if session_info else "",
+            )
+
+        half_spread = base_spread / 2
+        bid_price = snap_to_tick(current_price - half_spread)
+        ask_price = snap_to_tick(current_price + half_spread)
+
+        # Skew quotes based on inventory to reduce risk
+        # If long, lower bid (attract fewer buys) and lower ask (encourage sells to us)
+        if self.position.side == "LONG" and self.position.size > 0:
+            skew = 0.25 * (self.position.size // 10)
+            bid_price = snap_to_tick(bid_price - skew)
+            ask_price = snap_to_tick(ask_price - skew)
+        elif self.position.side == "SHORT" and self.position.size > 0:
+            skew = 0.25 * (self.position.size // 10)
+            bid_price = snap_to_tick(bid_price + skew)
+            ask_price = snap_to_tick(ask_price + skew)
+
+        # Quote size: 10-20 contracts per side, reduced if near max position
+        remaining_capacity = self.max_position - self.position.size
+        quote_size = min(15, max(5, remaining_capacity))
+
+        # Submit both sides
+        bid_order = book.submit_limit_order(
+            self.agent_id, Side.BUY, bid_price, quote_size, timestamp)
+        ask_order = book.submit_limit_order(
+            self.agent_id, Side.SELL, ask_price, quote_size, timestamp)
+
+        # Track fills
+        bid_filled = bid_order.filled_qty if bid_order else 0
+        ask_filled = ask_order.filled_qty if ask_order else 0
+
+        if bid_filled > 0:
+            self._add_to_position("LONG", bid_filled, bid_price)
+        if ask_filled > 0:
+            self._add_to_position("SHORT", ask_filled, ask_price)
+
+        # Update P&L
+        self.position.update_pnl(current_price)
+
+        action = f"QUOTE bid={bid_price:.2f}x{quote_size} ask={ask_price:.2f}x{quote_size}"
+        reasoning = (f"Spread={base_spread:.2f}, "
+                     f"bid_fill={bid_filled}, ask_fill={ask_filled}, "
+                     f"inv={self.position.side}x{self.position.size}")
+
+        decision = AgentDecision(
+            timestamp=timestamp, agent_id=self.agent_id,
+            agent_type="MARKET_MAKER", current_price=current_price,
+            action=action, qty=quote_size, price=current_price,
+            reasoning=reasoning, conviction=1.0, market_read="NEUTRAL",
+            position_side=self.position.side, position_size=self.position.size,
+            realized_pnl=self.realized_pnl,
+            unrealized_pnl=self.position.unrealized_pnl,
+            fill_price=bid_price if bid_filled > 0 else ask_price if ask_filled > 0 else 0.0,
+            session_name=session_info.session_name if session_info else "",
+        )
+        self.decisions.append(decision)
+        return decision
+
+    def _add_to_position(self, side: str, qty: int, price: float) -> None:
+        """Same position tracking as LLMTradingAgent."""
+        if self.position.side == side or self.position.side == "FLAT":
+            if self.position.size == 0:
+                self.position.avg_entry = price
+            else:
+                total_cost = self.position.avg_entry * self.position.size + price * qty
+                self.position.avg_entry = total_cost / (self.position.size + qty)
+            self.position.side = side
+            self.position.size += qty
+        else:
+            if qty >= self.position.size:
+                self.realized_pnl += self.position.unrealized_pnl
+                remaining = qty - self.position.size
+                self.position = Position()
+                if remaining > 0:
+                    self.position.side = side
+                    self.position.size = remaining
+                    self.position.avg_entry = price
+            else:
+                self.position.size -= qty

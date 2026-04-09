@@ -4,6 +4,8 @@ Produce the initial price bars that establish the market context
 before agents begin driving price through order flow.
 """
 import random
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 
 def generate_scenario_a(seed: int = 42) -> dict:
@@ -15,6 +17,12 @@ def generate_scenario_a(seed: int = 42) -> dict:
     Phase 3 (bars 8-14): Indecision — seed bars thin out, agents take over
     """
     random.seed(seed)
+
+    # Generate realistic timestamps starting at RTH open
+    et = ZoneInfo("America/New_York")
+    session_start = datetime(2026, 3, 13, 9, 30, tzinfo=et)
+    bar_interval = timedelta(minutes=5)
+
     bars = []
     price = 5400.00
 
@@ -25,7 +33,8 @@ def generate_scenario_a(seed: int = 42) -> dict:
         h = c + random.uniform(0.0, 0.75)
         low = o - random.uniform(0.0, 0.5)
         bars.append({"open": o, "high": h, "low": low, "close": c,
-                      "volume": random.randint(800, 1500)})
+                      "volume": random.randint(800, 1500),
+                      "ts_event": int((session_start + bar_interval * len(bars)).timestamp())})
         price = c
 
     # Phase 2: Buy climax — 3 strong bull bars with expanding ranges
@@ -36,7 +45,8 @@ def generate_scenario_a(seed: int = 42) -> dict:
         h = c + random.uniform(0.0, 0.5)
         low = o - random.uniform(0.0, 0.25)
         bars.append({"open": o, "high": h, "low": low, "close": c,
-                      "volume": random.randint(2000, 4000)})
+                      "volume": random.randint(2000, 4000),
+                      "ts_event": int((session_start + bar_interval * len(bars)).timestamp())})
         price = c
 
     # Phase 3: Indecision — thinner seed bars, agents drive discovery
@@ -46,7 +56,8 @@ def generate_scenario_a(seed: int = 42) -> dict:
         h = max(o, c) + random.uniform(0.1, 0.5)
         low = min(o, c) - random.uniform(0.1, 0.5)
         bars.append({"open": o, "high": h, "low": low, "close": c,
-                      "volume": random.randint(200, 500)})
+                      "volume": random.randint(200, 500),
+                      "ts_event": int((session_start + bar_interval * len(bars)).timestamp())})
         price = c
 
     return {
@@ -78,6 +89,12 @@ def generate_scenario_b(seed: int = 123) -> dict:
     Phase 4 (bars 12+): Free run — agents determine resolution
     """
     random.seed(seed)
+
+    # Generate realistic timestamps starting at RTH open
+    et = ZoneInfo("America/New_York")
+    session_start = datetime(2026, 3, 14, 9, 30, tzinfo=et)
+    bar_interval = timedelta(minutes=5)
+
     bars = []
     price = 5420.00
 
@@ -88,7 +105,8 @@ def generate_scenario_b(seed: int = 123) -> dict:
         h = o + random.uniform(0.0, 0.5)
         low = c - random.uniform(0.0, 0.75)
         bars.append({"open": o, "high": h, "low": low, "close": c,
-                      "volume": random.randint(300, 600)})
+                      "volume": random.randint(300, 600),
+                      "ts_event": int((session_start + bar_interval * len(bars)).timestamp())})
         price = c
 
     overnight_close = price
@@ -101,7 +119,8 @@ def generate_scenario_b(seed: int = 123) -> dict:
     h = max(o, c) + random.uniform(0.5, 1.5)
     low = min(o, c) - random.uniform(0.5, 1.5)
     bars.append({"open": o, "high": h, "low": low, "close": c,
-                  "volume": random.randint(2000, 4000)})
+                  "volume": random.randint(2000, 4000),
+                  "ts_event": int((session_start + bar_interval * len(bars)).timestamp())})
     price = c
 
     # Phase 3: Opening range tests
@@ -112,7 +131,8 @@ def generate_scenario_b(seed: int = 123) -> dict:
         h = max(o, c) + random.uniform(0.0, 0.75)
         low = min(o, c) - random.uniform(0.0, 0.75)
         bars.append({"open": o, "high": h, "low": low, "close": c,
-                      "volume": random.randint(800, 2000)})
+                      "volume": random.randint(800, 2000),
+                      "ts_event": int((session_start + bar_interval * len(bars)).timestamp())})
         price = c
 
     return {

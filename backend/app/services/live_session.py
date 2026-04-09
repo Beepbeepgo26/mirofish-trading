@@ -5,6 +5,7 @@ aggregates them into 5-minute bars via BarBuilder,
 runs agent decisions on each 5m bar, and pushes results via callback.
 """
 import asyncio
+import copy
 import logging
 import random
 import threading
@@ -23,7 +24,7 @@ from app.agents.profiles import (
     create_institutional_profiles, create_retail_profiles,
     create_mm_profiles, create_noise_profiles,
 )
-from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision
+from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, MarketMakerAgent, AgentDecision
 from app.services.llm_client import LLMClient
 from app.services.bar_builder import BarBuilder
 from app.services.session_context import classify_session, SessionInfo
@@ -364,8 +365,9 @@ class LiveSession:
 
         for i in range(0, len(self.agents), batch_size):
             batch = self.agents[i:i + batch_size]
+            state_snapshot = copy.copy(market_state)
             tasks = [
-                agent.decide(market_state, current_price,
+                agent.decide(state_snapshot, current_price,
                              self.book, self.bars, timestamp,
                              session_info=self._current_session_info)
                 for agent in batch
@@ -400,7 +402,7 @@ class LiveSession:
         for p in create_institutional_profiles(sc.agent_institutional):
             self.agents.append(LLMTradingAgent(p, self.llm_primary))
         for p in create_mm_profiles(sc.agent_market_maker):
-            self.agents.append(LLMTradingAgent(p, self.llm_primary))
+            self.agents.append(MarketMakerAgent(p.agent_id, max_position=p.max_position))
         for p in create_retail_profiles(sc.agent_retail):
             self.agents.append(LLMTradingAgent(p, self.llm_boost))
         for p in create_noise_profiles(sc.agent_noise):

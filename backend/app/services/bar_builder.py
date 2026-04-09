@@ -34,15 +34,12 @@ class BarBuilder:
         self._bucket: list[Bar] = []
         self._bar_count = 0  # Total completed aggregated bars
 
-        # Track all 1m bars for potential multi-timeframe use later
-        self._all_1m_bars: list[Bar] = []
 
     def add_bar(self, bar_1m: Bar) -> Optional[Bar]:
         """
         Add a 1-minute bar to the current bucket.
         Returns the completed aggregated bar if the bucket is full, else None.
         """
-        self._all_1m_bars.append(bar_1m)
         self._bucket.append(bar_1m)
 
         if len(self._bucket) >= self.interval:
@@ -96,7 +93,6 @@ class BarBuilder:
         """Clear the bucket and counter."""
         self._bucket = []
         self._bar_count = 0
-        self._all_1m_bars = []
 
 
 def resample_bars(bars_1m: list[dict], interval: int = 5) -> list[dict]:

@@ -7,6 +7,7 @@ Manages the full simulation lifecycle:
   4. Collect and compile results
 """
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -24,7 +25,7 @@ from app.agents.profiles import (
     create_mm_profiles, create_noise_profiles,
     AL_BROOKS_FULL_METHODOLOGY,
 )
-from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, AgentDecision
+from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, MarketMakerAgent, AgentDecision
 from app.services.llm_client import LLMClient
 from app.services.zep_memory import ZepMemoryService
 from app.services.session_context import classify_session
@@ -91,9 +92,9 @@ class SimulationManager:
         for p in inst_profiles:
             self.agents.append(LLMTradingAgent(p, self.llm_primary, memory=self.memory))
 
-        # Market makers → primary LLM (need good judgment)
+        # Market makers → rule-based (no LLM needed, saves tokens)
         for p in mm_profiles:
-            self.agents.append(LLMTradingAgent(p, self.llm_primary, memory=self.memory))
+            self.agents.append(MarketMakerAgent(p.agent_id, max_position=p.max_position))
 
         # Retail → boost LLM (cheaper model, personality does the heavy lifting)
         for p in retail_profiles:
@@ -170,7 +171,7 @@ class SimulationManager:
             t = len(seed_bars) + t_offset
 
             # Check for liquidity death and inject catalyst if needed
-            free_run_bars_so_far = [b for b in self.bars if b.timestamp >= len(seed_bars)]
+            free_run_bars_so_far = self.bars[len(seed_bars):]
             if not self._check_liquidity_health(free_run_bars_so_far):
                 catalyst = self._inject_catalyst(prev_close, t)
                 catalysts.append(catalyst)
@@ -222,6 +223,9 @@ class SimulationManager:
         """Run all agents concurrently with rate limiting."""
         random.shuffle(self.agents)
 
+        # Pass a snapshot to prevent agents from mutating shared state
+        state_snapshot = copy.copy(market_state)
+
         # Split into batches to respect concurrency limits
         batch_size = self.config.sim.concurrency
         for i in range(0, len(self.agents), batch_size):
@@ -229,7 +233,7 @@ class SimulationManager:
             tasks = []
             for agent in batch:
                 tasks.append(
-                    agent.decide(market_state, current_price,
+                    agent.decide(state_snapshot, current_price,
                                  self.book, self.bars, timestamp,
                                  session_info=session_info)
                 )

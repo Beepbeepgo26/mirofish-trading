@@ -62,6 +62,18 @@ class Bar:
     sell_volume: int = 0
     ts_event: int = 0  # Unix timestamp in seconds (from Databento ts_event)
 
+    # Cached computed properties (set in __post_init__)
+    _body_pct: float = field(init=False, repr=False, default=0.0)
+    _is_strong_bull: bool = field(init=False, repr=False, default=False)
+    _is_strong_bear: bool = field(init=False, repr=False, default=False)
+
+    def __post_init__(self):
+        body = abs(self.close - self.open)
+        rng = self.high - self.low
+        self._body_pct = body / rng if rng > 0 else 0
+        self._is_strong_bull = self.close > self.open and self._body_pct > 0.6 and body > 0.5
+        self._is_strong_bear = self.close < self.open and self._body_pct > 0.6 and body > 0.5
+
     @property
     def body_size(self):
         return abs(self.close - self.open)
@@ -80,17 +92,15 @@ class Bar:
 
     @property
     def body_pct(self):
-        if self.range_size == 0:
-            return 0
-        return self.body_size / self.range_size
+        return self._body_pct
 
     @property
     def is_strong_bull(self):
-        return self.is_bull and self.body_pct > 0.6 and self.body_size > 0.5
+        return self._is_strong_bull
 
     @property
     def is_strong_bear(self):
-        return self.is_bear and self.body_pct > 0.6 and self.body_size > 0.5
+        return self._is_strong_bear
 
     def to_dict(self) -> dict:
         return {
