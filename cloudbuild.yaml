@@ -1,48 +1,12 @@
 steps:
-  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-f', 'Dockerfile.cloudrun', '-t', 'gcr.io/$PROJECT_ID/mirofish-trading', '.']
-
-  # Push the container image to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/mirofish-trading']
-
-  # Deploy container image to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'mirofish-trading'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/mirofish-trading'
-      - '--region'
-      - '${_REGION}'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--memory'
-      - '2Gi'
-      - '--cpu'
-      - '2'
-      - '--timeout'
-      - '3600'
-      - '--concurrency'
-      - '10'
-      - '--min-instances'
-      - '1'
-      - '--max-instances'
-      - '3'
-      - '--set-env-vars'
-      - 'PYTHONPATH=/app,PYTHONUNBUFFERED=1,LOG_LEVEL=INFO'
-      - '--set-secrets'
-      - 'LLM_API_KEY=mirofish-llm-api-key:latest,LLM_BOOST_API_KEY=mirofish-llm-boost-api-key:latest,ZEP_API_KEY=mirofish-zep-api-key:latest,DATABENTO_API_KEY=mirofish-databento-api-key:latest'
-
-substitutions:
-  _REGION: 'us-west2'  # LA region — closest to you
-
+      - 'build'
+      - '-f'
+      - 'Dockerfile.cloudrun'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/mirofish-trading:latest'
+      - '.'
 images:
-  - 'gcr.io/$PROJECT_ID/mirofish-trading'
-
-options:
-  logging: CLOUD_LOGGING_ONLY
+  - 'gcr.io/$PROJECT_ID/mirofish-trading:latest'
+timeout: '1200s'

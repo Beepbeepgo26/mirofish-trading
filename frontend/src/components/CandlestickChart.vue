@@ -62,6 +62,17 @@ function initChart() {
       secondsVisible: false,
       barSpacing: 12,
     },
+    localization: {
+      timeFormatter: (timestamp) => {
+        const date = new Date(timestamp * 1000)
+        return date.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'America/Chicago',
+          hour12: false,
+        })
+      },
+    },
   })
 
   // Candlestick series
