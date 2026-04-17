@@ -1,5 +1,9 @@
 # MiroFish Trading Simulation
 
+> ⚠️ **Repo Identity Check:** This is `mirofish-trading` — the trading simulation app.
+> For the standalone forecasting app, see `mirofish-forecast` repo.
+> See `AGENT_CONTEXT.md` for full disambiguation.
+
 **ES Futures Multi-Agent Simulation — Institutional vs Retail — Al Brooks Price Action**
 
 Adapted from [MiroFish](https://github.com/666ghj/MiroFish) swarm intelligence engine. Uses LLM-powered agents with distinct personalities, trading methodologies, and cognitive biases to simulate ES futures order flow dynamics.
