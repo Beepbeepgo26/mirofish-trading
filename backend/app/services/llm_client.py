@@ -41,6 +41,7 @@ class LLMClient:
         self._semaphore = asyncio.Semaphore(concurrency)
         self._total_calls = 0
         self._total_tokens = 0
+        self._cached_tokens = 0
         self._errors = 0
 
     async def complete(
@@ -78,6 +79,17 @@ class LLMClient:
                     self._total_calls += 1
                     self._total_tokens += (response.usage.prompt_tokens +
                                            response.usage.completion_tokens)
+
+                    # Log prompt caching metrics if available
+                    cached = getattr(response.usage, "prompt_tokens_details", None)
+                    cached_tokens = (cached.cached_tokens if cached else 0) or 0
+                    self._cached_tokens += cached_tokens
+                    if cached_tokens > 0:
+                        logger.info(
+                            f"[{self.name}] prompt_cache_hit: "
+                            f"cached={cached_tokens}/{response.usage.prompt_tokens} "
+                            f"({cached_tokens / response.usage.prompt_tokens:.0%})"
+                        )
 
                     return LLMResponse(
                         content=response.choices[0].message.content or "",
@@ -135,5 +147,6 @@ class LLMClient:
             "name": self.name,
             "total_calls": self._total_calls,
             "total_tokens": self._total_tokens,
+            "cached_tokens": self._cached_tokens,
             "errors": self._errors,
         }

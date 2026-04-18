@@ -25,7 +25,10 @@ from app.agents.profiles import (
     create_mm_profiles, create_noise_profiles,
     AL_BROOKS_FULL_METHODOLOGY,
 )
-from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, MarketMakerAgent, AgentDecision
+from app.agents.llm_agent import (
+    LLMTradingAgent, NoiseAgent, MarketMakerAgent, AgentDecision,
+    build_shared_bar_context,
+)
 from app.services.llm_client import LLMClient
 from app.services.zep_memory import ZepMemoryService
 from app.services.session_context import classify_session
@@ -221,13 +224,18 @@ class SimulationManager:
                                 current_price: float, timestamp: int,
                                 session_info=None):
         """Run all agents concurrently with rate limiting."""
-        random.shuffle(self.agents)
+        # Build shared bar-level context once for prompt caching
+        shared_context = build_shared_bar_context(
+            market_state, current_price, self.book, self.bars, session_info,
+        )
 
         # Pass a snapshot to prevent agents from mutating shared state
         state_snapshot = copy.copy(market_state)
 
         # Split into batches to respect concurrency limits
         batch_size = self.config.sim.concurrency
+        decisions_before = len(self.all_decisions)
+
         for i in range(0, len(self.agents), batch_size):
             batch = self.agents[i:i + batch_size]
             tasks = []
@@ -235,7 +243,8 @@ class SimulationManager:
                 tasks.append(
                     agent.decide(state_snapshot, current_price,
                                  self.book, self.bars, timestamp,
-                                 session_info=session_info)
+                                 session_info=session_info,
+                                 shared_context=shared_context)
                 )
             decisions = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -244,6 +253,12 @@ class SimulationManager:
                     self.all_decisions.append(d)
                 elif isinstance(d, Exception):
                     logger.error(f"Agent decision error: {d}")
+
+        # Apply aggregated counter-trend blocks to LIVE state machine
+        bar_decisions = self.all_decisions[decisions_before:]
+        blocks_this_bar = sum(1 for d in bar_decisions if d.counter_trend_blocked)
+        if blocks_this_bar > 0:
+            self.state_machine.state.fade_attempts += blocks_this_bar
 
     def _seed_initial_liquidity(self, price: float):
         """Seed order book with initial two-sided liquidity."""

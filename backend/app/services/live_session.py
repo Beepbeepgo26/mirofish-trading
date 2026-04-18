@@ -24,7 +24,10 @@ from app.agents.profiles import (
     create_institutional_profiles, create_retail_profiles,
     create_mm_profiles, create_noise_profiles,
 )
-from app.agents.llm_agent import LLMTradingAgent, NoiseAgent, MarketMakerAgent, AgentDecision
+from app.agents.llm_agent import (
+    LLMTradingAgent, NoiseAgent, MarketMakerAgent, AgentDecision,
+    build_shared_bar_context,
+)
 from app.services.llm_client import LLMClient
 from app.services.bar_builder import BarBuilder
 from app.services.session_context import classify_session, SessionInfo
@@ -358,7 +361,12 @@ class LiveSession:
     async def _run_agent_round(self, market_state: MarketState,
                                 current_price: float, timestamp: int):
         """Run all agents concurrently for this bar."""
-        random.shuffle(self.agents)
+        # Build the shared bar-level context ONCE — all agents reuse this
+        # verbatim so OpenAI prompt caching can match across calls.
+        shared_context = build_shared_bar_context(
+            market_state, current_price, self.book, self.bars,
+            self._current_session_info,
+        )
 
         batch_size = self.config.sim.concurrency
         bar_decisions = []
@@ -367,9 +375,12 @@ class LiveSession:
             batch = self.agents[i:i + batch_size]
             state_snapshot = copy.copy(market_state)
             tasks = [
-                agent.decide(state_snapshot, current_price,
-                             self.book, self.bars, timestamp,
-                             session_info=self._current_session_info)
+                agent.decide(
+                    state_snapshot, current_price,
+                    self.book, self.bars, timestamp,
+                    session_info=self._current_session_info,
+                    shared_context=shared_context,
+                )
                 for agent in batch
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -380,6 +391,16 @@ class LiveSession:
                     bar_decisions.append(d)
                 elif isinstance(d, Exception):
                     logger.error(f"Agent decision error: {d}")
+
+        # Aggregate counter-trend blocks and mutate LIVE state machine
+        # (agents receive a shallow copy so cannot mutate this directly)
+        blocks_this_bar = sum(1 for d in bar_decisions if d.counter_trend_blocked)
+        if blocks_this_bar > 0:
+            self.state_machine.state.fade_attempts += blocks_this_bar
+            logger.debug(
+                f"[{self.session_id}] fade_attempts += {blocks_this_bar} "
+                f"(total: {self.state_machine.state.fade_attempts})"
+            )
 
         # Emit decisions for this bar to frontend
         active_decisions = [d.to_dict() for d in bar_decisions if d.action != "HOLD"]

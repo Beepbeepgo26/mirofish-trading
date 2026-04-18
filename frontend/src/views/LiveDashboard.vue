@@ -245,14 +245,16 @@ function formatNum(n) {
   return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
+// Monotonic sequence cursor — last seq_id we've processed
+let lastSeenSeq = 0
+
 async function startSession() {
   error.value = ''
   finalResults.value = null
   bars.value = []
   allDecisions.value = []
   pnl.value = {}
-  seenBarTimestamps.clear()
-  seenDecisionKeys.clear()
+  lastSeenSeq = 0
 
   try {
     const { data } = await api.startLive({
@@ -263,18 +265,15 @@ async function startSession() {
     sessionId.value = data.session_id
     sessionState.value = data.state || 'waiting_for_data'
 
-    // Connect SSE stream
+    // Try SSE first; polling only starts if SSE fails
     connectSSE(data.session_id)
-
-    // Also start polling as fallback
-    startPolling()
   } catch (e) {
     // Handle 409 — session already running: recover it instead of showing error
     if (e.response?.status === 409 && e.response?.data?.session_id) {
       sessionId.value = e.response.data.session_id
       sessionState.value = e.response.data.state || 'running'
+      lastSeenSeq = 0
       connectSSE(e.response.data.session_id)
-      startPolling()
     } else {
       error.value = e.response?.data?.error || e.message || 'Failed to start'
     }
@@ -291,6 +290,7 @@ async function stopSession() {
   }
   disconnectSSE()
   stopPolling()
+  lastSeenSeq = 0
 }
 
 function connectSSE(sid) {
@@ -308,9 +308,11 @@ function connectSSE(sid) {
     eventSource.onerror = () => {
       console.warn('SSE connection lost, falling back to polling')
       disconnectSSE()
+      startPolling(sid)  // Start polling only on SSE failure
     }
   } catch (e) {
     console.warn('SSE not available, using polling')
+    startPolling(sid)
   }
 }
 
@@ -321,25 +323,26 @@ function disconnectSSE() {
   }
 }
 
-function startPolling() {
+function startPolling(sid) {
   stopPolling()
-  let afterIdx = 0
   pollInterval = setInterval(async () => {
-    if (!isActive.value) { stopPolling(); return }
+    if (!isActive.value) {
+      stopPolling()
+      return
+    }
     try {
-      const { data } = await api.pollLiveEvents(afterIdx)
+      const { data } = await api.pollLiveEvents(lastSeenSeq)
       if (data.events) {
         for (const event of data.events) {
           handleEvent(event)
         }
-        afterIdx += data.events.length
       }
       if (!data.active) {
         sessionState.value = 'stopped'
         stopPolling()
       }
     } catch (e) {
-      // Ignore polling errors
+      // Ignore transient polling errors
     }
   }, 2000)
 }
@@ -351,11 +354,12 @@ function stopPolling() {
   }
 }
 
-// Track seen events to prevent SSE + polling duplication
-const seenBarTimestamps = new Set()
-const seenDecisionKeys = new Set()
-
 function handleEvent(msg) {
+  // Advance cursor if msg carries a seq
+  if (typeof msg.seq === 'number' && msg.seq > lastSeenSeq) {
+    lastSeenSeq = msg.seq
+  }
+
   const { type, data } = msg
 
   if (type === 'session_started') {
@@ -364,25 +368,12 @@ function handleEvent(msg) {
     barsReceived.value = data.bars_received
     sessionState.value = 'waiting_for_data'
   } else if (type === 'bar') {
-    // Deduplicate: skip if we already have this bar
-    const barKey = data.time || data.timestamp
-    if (seenBarTimestamps.has(barKey)) return
-    seenBarTimestamps.add(barKey)
     bars.value = [...bars.value, data]
     barsReceived.value = bars.value.length
     sessionState.value = 'running'
   } else if (type === 'decisions') {
-    if (data.decisions) {
-      // Deduplicate decisions by agent_id + timestamp
-      const newDecs = data.decisions.filter(d => {
-        const key = `${d.agent_id}_${d.timestamp}`
-        if (seenDecisionKeys.has(key)) return false
-        seenDecisionKeys.add(key)
-        return true
-      })
-      if (newDecs.length) {
-        allDecisions.value = [...allDecisions.value, ...newDecs]
-      }
+    if (data.decisions && data.decisions.length) {
+      allDecisions.value = [...allDecisions.value, ...data.decisions]
     }
   } else if (type === 'pnl') {
     pnl.value = data
@@ -409,9 +400,8 @@ async function checkExistingSession() {
       sessionId.value = data.session_id
       sessionState.value = data.state || 'running'
       barsReceived.value = data.bars_received || data.total_bars || 0
-      // Reconnect SSE + polling to pick up where we left off
+      // Reconnect SSE only (polling starts only on SSE failure)
       connectSSE(data.session_id)
-      startPolling()
     }
   } catch (e) {
     // No active session, that's fine

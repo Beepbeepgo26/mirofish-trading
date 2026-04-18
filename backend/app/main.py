@@ -74,24 +74,36 @@ def create_app() -> Flask:
     def live_websocket(session_id):
         """
         SSE endpoint for live session updates.
-        Uses Server-Sent Events (text/event-stream) which works on Cloud Run
-        without any additional dependencies.
+        Uses monotonic sequence IDs so truncation of the underlying buffer
+        does not cause event loss.
         """
-        from app.api.live_routes import _ws_buffers, _active_session
+        from app.api.live_routes import (
+            _ws_buffers, _ws_seq_counters, _ws_lock, _active_session,
+        )
 
         def event_stream():
-            idx = 0
+            last_seq = 0
             while True:
-                events = _ws_buffers.get(session_id, [])
-                while idx < len(events):
-                    event = events[idx]
-                    yield f"data: {json.dumps(event)}\n\n"
-                    idx += 1
-                # Check if session is still active
-                if _active_session is None or _active_session.state.value in ("stopped", "error"):
+                with _ws_lock:
+                    buf = _ws_buffers.get(session_id)
+                    new_events = []
+                    if buf:
+                        new_events = [
+                            (seq, event) for seq, event in buf if seq > last_seq
+                        ]
+
+                for seq, event in new_events:
+                    yield f"data: {json.dumps({'seq': seq, **event})}\n\n"
+                    last_seq = seq
+
+                # Session ended?
+                if _active_session is None or _active_session.state.value in (
+                    "stopped", "error"
+                ):
                     yield f"data: {json.dumps({'type': 'session_ended'})}\n\n"
                     break
-                time.sleep(0.5)  # Poll interval
+
+                time.sleep(0.5)
 
         return app.response_class(
             event_stream(),
@@ -100,7 +112,7 @@ def create_app() -> Flask:
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
                 'X-Accel-Buffering': 'no',
-            }
+            },
         )
 
     return app

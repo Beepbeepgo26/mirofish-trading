@@ -3,6 +3,8 @@ LLM Trading Agent — The core agent class.
 Wraps Al Brooks state machine context + agent personality into an LLM prompt,
 gets structured JSON decision, and executes against the order book.
 """
+from __future__ import annotations
+
 import random
 import logging
 from dataclasses import dataclass
@@ -14,6 +16,131 @@ from app.services.llm_client import LLMClient
 from app.services.session_context import SessionInfo, CooldownManager
 
 logger = logging.getLogger(__name__)
+
+VALID_ACTIONS = frozenset({
+    "BUY_LIMIT", "SELL_LIMIT", "BUY_MARKET", "SELL_MARKET",
+    "HOLD", "EXIT_LONG", "EXIT_SHORT",
+})
+
+
+def _parse_llm_decision(result: dict, max_position: int,
+                        current_price: float, agent_id: str) -> dict:
+    """
+    Validate and normalize an LLM decision dict. Never raises.
+
+    Returns a dict with guaranteed types and ranges:
+        action: str in VALID_ACTIONS (defaults to "HOLD" on invalid)
+        qty: int in [0, max_position]
+        price: float > 0 (defaults to current_price on invalid)
+        reasoning: str
+        conviction: float in [0.0, 1.0]
+        market_read: str
+
+    Logs a warning for each field it had to coerce.
+    """
+    action = result.get("action", "HOLD")
+    if not isinstance(action, str) or action not in VALID_ACTIONS:
+        logger.warning(f"[{agent_id}] Invalid action '{action}', defaulting to HOLD")
+        action = "HOLD"
+
+    try:
+        qty_raw = result.get("qty", 0)
+        qty = int(float(qty_raw))  # float() tolerates "2.5" strings and floats
+        qty = max(0, min(qty, max_position))
+    except (ValueError, TypeError):
+        logger.warning(f"[{agent_id}] Invalid qty '{result.get('qty')}', defaulting to 0")
+        qty = 0
+
+    try:
+        price = float(result.get("price", current_price))
+        if price <= 0:
+            price = current_price
+    except (ValueError, TypeError):
+        logger.warning(f"[{agent_id}] Invalid price '{result.get('price')}', "
+                       f"defaulting to current_price={current_price}")
+        price = current_price
+
+    try:
+        conviction = float(result.get("conviction", 0.5))
+        conviction = max(0.0, min(1.0, conviction))
+    except (ValueError, TypeError):
+        logger.warning(f"[{agent_id}] Invalid conviction '{result.get('conviction')}', "
+                       f"defaulting to 0.5")
+        conviction = 0.5
+
+    reasoning = str(result.get("reasoning", "No reasoning provided."))
+    market_read = str(result.get("market_read", "UNKNOWN"))
+
+    # Cross-field sanity: nonzero qty requires a market/limit action
+    if action in ("HOLD", "EXIT_LONG", "EXIT_SHORT") and qty != 0:
+        qty = 0
+
+    return {
+        "action": action,
+        "qty": qty,
+        "price": price,
+        "reasoning": reasoning,
+        "conviction": conviction,
+        "market_read": market_read,
+    }
+
+
+def build_shared_bar_context(
+    state: MarketState,
+    current_price: float,
+    book: OrderBook,
+    bars: list[Bar],
+    session_info: SessionInfo | None = None,
+) -> str:
+    """
+    Build the bar-level context block that is identical across all agents
+    on the same bar. Placed at the SUFFIX of each agent's prompt so that
+    OpenAI's automatic prompt caching can match and reuse it.
+    """
+    recent_bars = bars[-10:] if len(bars) > 10 else bars
+    bars_str = "\n".join(b.to_prompt_str() for b in recent_bars)
+    patterns = (", ".join(p.value for p in state.active_patterns)
+                if state.active_patterns else "none")
+    book_str = book.get_book_summary()
+
+    session_str = ""
+    if session_info:
+        session_str = f"""
+SESSION CONTEXT:
+- Current Time: {session_info.time_et}
+- Session: {session_info.session_name}
+- Minutes Since RTH Open: {session_info.minutes_since_rth_open}
+- Bars Since RTH Open (5m): {session_info.bars_since_rth_open}
+- Trade Aggressiveness: {session_info.trade_aggressiveness}
+- Volatility Regime: {session_info.volatility_regime}
+
+AL BROOKS TIME-OF-DAY GUIDANCE:
+{session_info.brooks_guidance}
+"""
+
+    return f"""CURRENT MARKET STATE (Bar {len(bars) - 1}):
+Price: {current_price:.2f}
+Order Book: {book_str}
+{session_str}
+RECENT PRICE ACTION (5-MINUTE BARS):
+{bars_str}
+
+AL BROOKS STATE MACHINE ASSESSMENT:
+- Market Cycle: {state.cycle.value}
+- Always-In Direction: {state.always_in.direction} (confidence: {state.always_in.confidence:.0%})
+- Active Patterns: [{patterns}]
+- Consecutive Bull Bars: {state.consecutive_bull_bars}
+- Consecutive Bear Bars: {state.consecutive_bear_bars}
+- TBTL Expected: {"YES (" + str(state.tbtl_bars_remaining) + " bars remaining)" if state.tbtl_expected else "No"}
+- Trend Extending: {"YES — DO NOT fade until confirmed reversal bar" if state.trend_extending else "No"}
+- Confirmed Reversal: {"YES — safe to fade" if state.confirmed_reversal else "No"}
+- Fade Attempts This Trend: {state.fade_attempts}
+- Support Levels: {[f"{s:.2f}" for s in state.support_levels[:3]]}
+- Resistance Levels: {[f"{r:.2f}" for r in state.resistance_levels[:3]]}
+
+DECISION REQUIRED:
+Given the price action, session context, your methodology, and your personality — what is your next action?
+Respond with JSON only."""
 
 
 @dataclass
@@ -54,6 +181,7 @@ class AgentDecision:
     entry_price: float = 0.0     # Average entry price of the position at time of decision
     session_name: str = ""       # Current session (MORNING, LUNCH_LULL, etc.)
     cooldown_blocked: bool = False  # Whether the trade was blocked by cooldown
+    counter_trend_blocked: bool = False  # Whether blocked by trend-extension guard
 
     def to_dict(self) -> dict:
         return {k: v for k, v in self.__dict__.items()}
@@ -93,84 +221,60 @@ class LLMTradingAgent:
     def agent_type(self):
         return self.profile.agent_type
 
-    def _build_user_prompt(self, state: MarketState, current_price: float,
-                           book: OrderBook, bars: list[Bar],
-                           session_info: SessionInfo = None) -> str:
-        """Build the user prompt with full market context."""
-        # Recent bars (last 10)
-        recent_bars = bars[-10:] if len(bars) > 10 else bars
-        bars_str = "\n".join(b.to_prompt_str() for b in recent_bars)
+    def _build_user_prompt(
+        self,
+        state: MarketState,
+        current_price: float,
+        book: OrderBook,
+        bars: list[Bar],
+        session_info: SessionInfo = None,
+        shared_context: str | None = None,
+    ) -> str:
+        """
+        Build the user prompt with full market context.
 
-        # Market state from Brooks state machine
-        patterns = ", ".join(p.value for p in state.active_patterns) if state.active_patterns else "none"
-
-        # Position context
+        If `shared_context` is provided, use it verbatim for the bar-level
+        portion (bars, state machine, session, book). Otherwise build it
+        locally — used by the batch simulator path that doesn't precompute.
+        """
+        # Per-agent prefix — personalized, short, comes FIRST so it does not
+        # pollute the cacheable suffix.
         self.position.update_pnl(current_price)
         pos_str = (f"Side={self.position.side}, Size={self.position.size}, "
                    f"AvgEntry={self.position.avg_entry:.2f}, "
                    f"UnrealizedPnL=${self.position.unrealized_pnl:,.0f}")
 
-        # Order book
-        book_str = book.get_book_summary()
-
-        # Session context
-        session_str = ""
-        if session_info:
-            session_str = f"""
-SESSION CONTEXT:
-- Current Time: {session_info.time_et}
-- Session: {session_info.session_name}
-- Minutes Since RTH Open: {session_info.minutes_since_rth_open}
-- Bars Since RTH Open (5m): {session_info.bars_since_rth_open}
-- Trade Aggressiveness: {session_info.trade_aggressiveness}
-- Volatility Regime: {session_info.volatility_regime}
-
-AL BROOKS TIME-OF-DAY GUIDANCE:
-{session_info.brooks_guidance}
-"""
-
-        # Cooldown status
         cooldown_str = ""
         if self.cooldown.consecutive_losses > 0:
-            cooldown_str = f"\nCOOLDOWN STATUS: {self.cooldown.consecutive_losses} consecutive losses. "
+            cooldown_str = (
+                f"\nCOOLDOWN STATUS: {self.cooldown.consecutive_losses} "
+                f"consecutive losses."
+            )
             if self.cooldown.paused:
-                cooldown_str += "TRADING PAUSED — do not enter new positions."
+                cooldown_str += " TRADING PAUSED — do not enter new positions."
 
-        return f"""CURRENT MARKET STATE (Bar {len(bars)-1}):
-Price: {current_price:.2f}
-Order Book: {book_str}
-{session_str}
-RECENT PRICE ACTION (5-MINUTE BARS):
-{bars_str}
-
-AL BROOKS STATE MACHINE ASSESSMENT:
-- Market Cycle: {state.cycle.value}
-- Always-In Direction: {state.always_in.direction} (confidence: {state.always_in.confidence:.0%})
-- Active Patterns: [{patterns}]
-- Consecutive Bull Bars: {state.consecutive_bull_bars}
-- Consecutive Bear Bars: {state.consecutive_bear_bars}
-- TBTL Expected: {"YES (" + str(state.tbtl_bars_remaining) + " bars remaining)" if state.tbtl_expected else "No"}
-- Trend Extending: {"YES — DO NOT fade until confirmed reversal bar" if state.trend_extending else "No"}
-- Confirmed Reversal: {"YES — safe to fade" if state.confirmed_reversal else "No"}
-- Fade Attempts This Trend: {state.fade_attempts}
-- Support Levels: {[f"{s:.2f}" for s in state.support_levels[:3]]}
-- Resistance Levels: {[f"{r:.2f}" for r in state.resistance_levels[:3]]}
-
-YOUR CURRENT POSITION:
+        per_agent_prefix = f"""YOUR CURRENT POSITION:
 {pos_str}
 Entry Price: {self.position.avg_entry:.2f}
 Realized P&L (session): ${self.realized_pnl:,.0f}
 {cooldown_str}
-DECISION REQUIRED:
-Given the price action, session context, your methodology, and your personality — what is your next action?
-Respond with JSON only."""
+"""
+
+        if shared_context is None:
+            shared_context = build_shared_bar_context(
+                state, current_price, book, bars, session_info
+            )
+
+        return per_agent_prefix + "\n" + shared_context
 
     async def decide(self, state: MarketState, current_price: float,
                      book: OrderBook, bars: list[Bar], timestamp: int,
-                     session_info: SessionInfo = None) -> AgentDecision:
+                     session_info: SessionInfo = None,
+                     shared_context: str | None = None) -> AgentDecision:
         """Get LLM decision and execute it."""
         user_prompt = self._build_user_prompt(state, current_price, book, bars,
-                                              session_info=session_info)
+                                              session_info=session_info,
+                                              shared_context=shared_context)
 
         # Query Zep knowledge graph for relevant context
         memory_context = ""
@@ -202,13 +306,19 @@ Respond with JSON only."""
             max_tokens=300,
         )
 
-        # Parse decision
-        action = result.get("action", "HOLD")
-        qty = min(int(result.get("qty", 0)), self.profile.max_position)
-        price = float(result.get("price", current_price))
-        reasoning = result.get("reasoning", "No reasoning provided.")
-        conviction = float(result.get("conviction", 0.5))
-        market_read = result.get("market_read", "UNKNOWN")
+        # Parse decision — validates and clamps all fields, logs warnings
+        parsed = _parse_llm_decision(
+            result,
+            max_position=self.profile.max_position,
+            current_price=current_price,
+            agent_id=self.agent_id,
+        )
+        action = parsed["action"]
+        qty = parsed["qty"]
+        price = parsed["price"]
+        reasoning = parsed["reasoning"]
+        conviction = parsed["conviction"]
+        market_read = parsed["market_read"]
 
         # Execute action
         if conviction < 0.3:
@@ -233,6 +343,7 @@ Respond with JSON only."""
                 reasoning += f" [COOLDOWN: {block_reason}]"
 
         # Guard: Block counter-trend entries during trend extension
+        counter_trend_blocked_this_bar = False
         if state.trend_extending and not state.confirmed_reversal:
             is_counter_trend = False
             if state.cycle in (MarketCycle.STRONG_BULL, MarketCycle.WEAK_BULL):
@@ -248,7 +359,11 @@ Respond with JSON only."""
                 action = 'HOLD'
                 qty = 0
                 reasoning += ' [BLOCKED: trend extending without reversal confirmation]'
-                state.fade_attempts += 1
+                counter_trend_blocked_this_bar = True
+                # Note: do NOT mutate state.fade_attempts here — the state
+                # object is a shallow copy. The session/manager will aggregate
+                # and apply the increment to the live state machine after the
+                # batch completes.
 
         fill_price, exit_price = self._execute(action, qty, price, book, current_price, timestamp)
 
@@ -272,6 +387,7 @@ Respond with JSON only."""
             entry_price=self.position.avg_entry,
             session_name=session_info.session_name if session_info else "",
             cooldown_blocked=(action == "HOLD" and "[COOLDOWN:" in reasoning),
+            counter_trend_blocked=counter_trend_blocked_this_bar,
         )
         self.decisions.append(decision)
         return decision
@@ -394,7 +510,8 @@ class NoiseAgent:
 
     async def decide(self, state: MarketState, current_price: float,
                      book: OrderBook, bars: list[Bar], timestamp: int,
-                     session_info: SessionInfo = None) -> AgentDecision:
+                     session_info: SessionInfo = None,
+                     shared_context: str | None = None) -> AgentDecision:
         action = "HOLD"
         qty = 0
         price = 0.0
@@ -486,7 +603,8 @@ class MarketMakerAgent:
 
     async def decide(self, state: MarketState, current_price: float,
                      book: OrderBook, bars: list[Bar], timestamp: int,
-                     session_info: SessionInfo = None) -> AgentDecision:
+                     session_info: SessionInfo = None,
+                     shared_context: str | None = None) -> AgentDecision:
         """Post two-sided quotes around fair value."""
 
         # Determine spread based on volatility
